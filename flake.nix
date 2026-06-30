@@ -30,8 +30,8 @@
       devShells.${system}.default = pkgs.mkShell {
         packages = [ rustPackage ];
         shellHook = ''
-          mkdir -p "$HOME/.rust-rover"
-          ln -sfn ${rustPackage} "$HOME/.rust-rover/toolchain"
+          mkdir -p "$PWD/.rust-rover"
+          ln -sfn ${rustPackage} "$PWD/.rust-rover/toolchain"
         '';
       };
     };

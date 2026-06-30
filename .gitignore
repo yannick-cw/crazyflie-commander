@@ -3,3 +3,5 @@ curriculum.md
 .direnv/
 target/
 .idea/
+.rust-rover/
+scala-rust-cheatsheet.md
