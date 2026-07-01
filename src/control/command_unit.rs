@@ -1,9 +1,15 @@
 use crate::utils::errors::MissionError;
 use derive_more::{Add, Mul, Sub};
-use std::time::{Duration, Instant};
+use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul)]
 pub struct Meters(pub f64);
+impl Display for Meters {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}m", self.0)
+    }
+}
 
 pub enum Command {
     TakeOff {
@@ -29,15 +35,27 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Waypoint {
     x: Meters,
     y: Meters,
     z: Meters,
-    visited_at: Instant,
+    visited_at: Duration,
+}
+impl Display for Waypoint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "(At: x:{} y:{} z:{} at {}s)",
+            self.x,
+            self.y,
+            self.z,
+            self.visited_at.as_secs()
+        )
+    }
 }
 impl Waypoint {
-    fn create(visited_at: Instant) -> Self {
+    fn create(visited_at: Duration) -> Self {
         Self {
             x: Default::default(),
             y: Default::default(),
@@ -53,7 +71,7 @@ pub trait CommandUnit {
 }
 
 pub struct TestCommandUnit {
-    pub current_time: Instant,
+    pub start_duration: Duration,
 }
 
 impl CommandUnit for TestCommandUnit {
@@ -61,7 +79,7 @@ impl CommandUnit for TestCommandUnit {
         let waypoints: Vec<Waypoint> = mission
             .into_iter()
             .scan(
-                Waypoint::create(self.current_time),
+                Waypoint::create(self.start_duration),
                 |last_waypoint, command| {
                     let next_waypoint = match command {
                         Command::TakeOff { height, duration } => Waypoint {
@@ -102,7 +120,7 @@ impl CommandUnit for TestCommandUnit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::control::drone_command::Command::{Land, MoveToWaypoint, TakeOff};
+    use crate::control::command_unit::Command::{Land, MoveToWaypoint, TakeOff};
 
     #[tokio::test]
     async fn simple_mission() {
@@ -122,31 +140,33 @@ mod tests {
             },
         ];
 
-        let current_time = Instant::now();
+        let start_duration = Duration::default();
 
-        let mission_result = TestCommandUnit { current_time }.run_mission(commands).await;
+        let mission_result = TestCommandUnit { start_duration }
+            .run_mission(commands)
+            .await;
 
         let expected_waypoints = vec![
             Waypoint {
                 x: Meters(0.0),
                 y: Meters(0.0),
                 z: Meters(2.0),
-                visited_at: current_time + Duration::from_secs(3),
+                visited_at: start_duration + Duration::from_secs(3),
             },
             Waypoint {
                 x: Meters(1.0),
                 y: Meters(1.0),
                 z: Meters(1.0),
-                visited_at: current_time + Duration::from_secs(3 + 5),
+                visited_at: start_duration + Duration::from_secs(3 + 5),
             },
             Waypoint {
                 x: Meters(1.0),
                 y: Meters(1.0),
                 z: Meters(0.0),
-                visited_at: current_time + Duration::from_secs(3 + 5 + 2),
+                visited_at: start_duration + Duration::from_secs(3 + 5 + 2),
             },
         ];
 
-        assert_eq!(mission_result, Ok(expected_waypoints))
+        assert_eq!(mission_result.unwrap_or(vec![]), expected_waypoints)
     }
 }
