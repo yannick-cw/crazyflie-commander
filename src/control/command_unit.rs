@@ -1,15 +1,9 @@
 use crate::utils::errors::MissionError;
-use std::ops::Add;
+use derive_more::{Add, Mul, Sub};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
-pub struct Meters(pub f32);
-impl Add for Meters {
-    type Output = Meters;
-    fn add(self, rhs: Self) -> Self::Output {
-        Meters(self.0 + rhs.0)
-    }
-}
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul)]
+pub struct Meters(pub f64);
 
 pub enum Command {
     TakeOff {
@@ -53,15 +47,16 @@ impl Waypoint {
     }
 }
 
-trait DroneControl {
+#[allow(async_fn_in_trait)]
+pub trait CommandUnit {
     async fn run_mission(&self, mission: Vec<Command>) -> Result<Vec<Waypoint>, MissionError>;
 }
 
-struct TestDroneConnection {
-    current_time: Instant,
+pub struct TestCommandUnit {
+    pub current_time: Instant,
 }
 
-impl DroneControl for TestDroneConnection {
+impl CommandUnit for TestCommandUnit {
     async fn run_mission(&self, mission: Vec<Command>) -> Result<Vec<Waypoint>, MissionError> {
         let waypoints: Vec<Waypoint> = mission
             .into_iter()
@@ -129,9 +124,7 @@ mod tests {
 
         let current_time = Instant::now();
 
-        let mission_result = TestDroneConnection { current_time }
-            .run_mission(commands)
-            .await;
+        let mission_result = TestCommandUnit { current_time }.run_mission(commands).await;
 
         let expected_waypoints = vec![
             Waypoint {
