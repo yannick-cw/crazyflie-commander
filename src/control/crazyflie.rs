@@ -1,9 +1,8 @@
-use crate::control::command_unit::{Command, CommandUnit, Telemetry, Waypoint};
+use crate::control::command_unit::{Command, CommandUnit, Telemetry};
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
-use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Receiver;
 
@@ -32,7 +31,7 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     }
 
     let log_stream = log_block
-        .start(LogPeriod::from_millis(500).unwrap())
+        .start(LogPeriod::from_millis(100).unwrap())
         .await?;
 
     let (tx, _rx) = broadcast::channel(64);
@@ -59,34 +58,60 @@ pub struct CrazyflieCommandUnit {
 }
 
 impl CommandUnit for CrazyflieCommandUnit {
-    async fn run_mission(&self, _mission: Vec<Command>) -> Res<Vec<Waypoint>> {
-        self.cf
-            .high_level_commander
-            .take_off(0.5, None, 3.0, None)
-            .await?;
-        println!("Flying...");
-        tokio::time::sleep(Duration::from_secs(6)).await;
-        println!("forward...");
-        self.cf
-            .high_level_commander
-            .go_to(1.0, 0.0, 0.2, 0.0, 2.0, true, true, None)
-            .await?;
-        tokio::time::sleep(Duration::from_secs(4)).await;
-        println!("back...");
-        self.cf
-            .high_level_commander
-            .go_to(-1.0, 0.0, 0.0, 0.0, 2.0, true, true, None)
-            .await?;
-        tokio::time::sleep(Duration::from_secs(6)).await;
-        println!("Landing...");
-        self.cf
-            .high_level_commander
-            .land(0.0, None, 2.0, None)
-            .await?;
-        tokio::time::sleep(Duration::from_secs(4)).await;
-
-        let _pos_x: u16 = self.cf.param.get("whateverpositionwillbe").await?;
-        Ok(vec![Waypoint::default()])
+    async fn run_mission(&self, mission: Vec<Command>) -> Res<()> {
+        let high_level_commander = &self.cf.high_level_commander;
+        for command in mission {
+            match command {
+                Command::TakeOff { height, duration } => {
+                    println!("Take Off...");
+                    high_level_commander
+                        .take_off(height.0, None, duration.as_secs_f32(), None)
+                        .await?;
+                    tokio::time::sleep(duration).await;
+                }
+                Command::Move { x, y, z, duration } => {
+                    println!("Moving...");
+                    high_level_commander
+                        .go_to(
+                            x.0,
+                            y.0,
+                            z.0,
+                            0.0,
+                            duration.as_secs_f32(),
+                            true,
+                            false,
+                            None,
+                        )
+                        .await?;
+                    tokio::time::sleep(duration).await;
+                }
+                Command::MoveToWaypoint { x, y, z, duration } => {
+                    println!("Moving to point...");
+                    high_level_commander
+                        .go_to(
+                            x.0,
+                            y.0,
+                            z.0,
+                            0.0,
+                            duration.as_secs_f32(),
+                            false,
+                            false,
+                            None,
+                        )
+                        .await?;
+                    tokio::time::sleep(duration).await;
+                }
+                Command::Land { duration } => {
+                    println!("Landing...");
+                    high_level_commander
+                        .land(0.0, None, duration.as_secs_f32(), None)
+                        .await?;
+                    tokio::time::sleep(duration).await;
+                }
+                Command::Hover { duration } => tokio::time::sleep(duration).await,
+            }
+        }
+        Ok(())
     }
 
     fn telemetry(&self) -> Receiver<Telemetry> {
