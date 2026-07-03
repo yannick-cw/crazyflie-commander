@@ -7,3 +7,5 @@ pub enum MissionError {
     #[error("Failed to establish connection :{0}")]
     ConnectionFailure(#[from] crazyflie_lib::Error),
 }
+
+pub type Res<A> = Result<A, MissionError>;
