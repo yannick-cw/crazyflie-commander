@@ -3,8 +3,9 @@ use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
-use tokio::sync::broadcast;
-use tokio::sync::broadcast::Receiver;
+use std::time::Duration;
+use tokio::sync::{broadcast, watch};
+use tokio::time::sleep;
 
 pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     let link_context = crazyflie_link::LinkContext::new();
@@ -35,12 +36,16 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
         .await?;
 
     let (tx, _rx) = broadcast::channel(64);
+    let (watch_tx, _watch_rx) = watch::channel(Telemetry::default());
     let local_sender_tx = tx.clone();
+    let local_watch_tx = watch_tx.clone();
     tokio::spawn(async move {
         loop {
             match log_stream.next().await {
                 Ok(data) => {
-                    let _ = local_sender_tx.send(Telemetry::from_log_data(data));
+                    let telemetry = Telemetry::from_log_data(data);
+                    let _ = local_sender_tx.send(telemetry);
+                    let _ = local_watch_tx.send(telemetry);
                 }
                 Err(_) => break,
             }
@@ -49,17 +54,30 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     Ok(CrazyflieCommandUnit {
         cf,
         telemetry_sender: tx,
+        telemetry_watch_sender: watch_tx,
     })
 }
 
 pub struct CrazyflieCommandUnit {
     cf: Crazyflie,
     telemetry_sender: broadcast::Sender<Telemetry>,
+    telemetry_watch_sender: watch::Sender<Telemetry>,
 }
 
 impl CommandUnit for CrazyflieCommandUnit {
     async fn run_mission(&self, mission: Vec<Command>) -> Res<()> {
         let high_level_commander = &self.cf.high_level_commander;
+        // Reset the x,y,z,yaw estimated values before a new flight
+        self.cf
+            .param
+            .set_lossy("kalman.resetEstimation", 1.0)
+            .await?;
+        sleep(Duration::from_millis(100)).await;
+        self.cf
+            .param
+            .set_lossy("kalman.resetEstimation", 0.0)
+            .await?;
+
         for command in mission {
             match command {
                 Command::TakeOff { height, duration } => {
@@ -67,7 +85,7 @@ impl CommandUnit for CrazyflieCommandUnit {
                     high_level_commander
                         .take_off(height.0, None, duration.as_secs_f32(), None)
                         .await?;
-                    tokio::time::sleep(duration).await;
+                    sleep(duration).await;
                 }
                 Command::Move { x, y, z, duration } => {
                     println!("Moving...");
@@ -83,7 +101,7 @@ impl CommandUnit for CrazyflieCommandUnit {
                             None,
                         )
                         .await?;
-                    tokio::time::sleep(duration).await;
+                    sleep(duration).await;
                 }
                 Command::MoveToWaypoint { x, y, z, duration } => {
                     println!("Moving to point...");
@@ -99,22 +117,26 @@ impl CommandUnit for CrazyflieCommandUnit {
                             None,
                         )
                         .await?;
-                    tokio::time::sleep(duration).await;
+                    sleep(duration).await;
                 }
                 Command::Land { duration } => {
                     println!("Landing...");
                     high_level_commander
                         .land(0.0, None, duration.as_secs_f32(), None)
                         .await?;
-                    tokio::time::sleep(duration).await;
+                    sleep(duration).await;
                 }
-                Command::Hover { duration } => tokio::time::sleep(duration).await,
+                Command::Hover { duration } => sleep(duration).await,
             }
         }
         Ok(())
     }
 
-    fn telemetry(&self) -> Receiver<Telemetry> {
+    fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
         self.telemetry_sender.subscribe()
+    }
+
+    fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
+        self.telemetry_watch_sender.subscribe()
     }
 }

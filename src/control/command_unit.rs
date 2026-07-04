@@ -4,7 +4,7 @@ use crazyflie_lib::subsystems::log::LogData;
 use derive_more::{Add, Mul, Sub};
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul)]
 pub struct Meters(pub f32);
@@ -104,4 +104,5 @@ impl Telemetry {
 pub trait CommandUnit {
     async fn run_mission(&self, mission: Vec<Command>) -> Res<()>;
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
+    fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
 }
