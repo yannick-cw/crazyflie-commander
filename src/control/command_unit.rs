@@ -35,8 +35,15 @@ pub struct BilliardParams {
     pub hold_for: Duration,
 }
 
+#[derive(Clone, Copy)]
+pub struct Waypoint {
+    pub x: Meters,
+    pub y: Meters,
+    pub z: Meters,
+}
+
 pub enum Command {
-    TakeOff {
+    Takeoff {
         height: Meters,
         duration: Duration,
     },
@@ -47,12 +54,17 @@ pub enum Command {
         z: Meters,
         duration: Duration,
     },
-    // move to a waypoint relative to the take off position
+    // move to a waypoint relative to the takeoff position
     MoveToWaypoint {
         x: Meters,
         y: Meters,
         z: Meters,
         duration: Duration,
+    },
+    // smooth waypoint - relative to takeoff position
+    SmoothPath {
+        waypoints: Vec<Waypoint>,
+        speed: MetersPerSecond,
     },
     // fly a bouncing pattern in the rectangle define by bl tr
     //   | ------- tr
@@ -74,7 +86,7 @@ pub struct Telemetry {
     pub z: Meters,
     pub x_v: MetersPerSecond,
     pub y_v: MetersPerSecond,
-    pub z_v: MetersPerSecond,
+    // pub z_v: MetersPerSecond,
     pub yaw: f32,
 }
 impl Telemetry {
@@ -86,7 +98,7 @@ impl Telemetry {
             z: Meters(get("stateEstimate.z")),
             x_v: MetersPerSecond(get("stateEstimate.vx")),
             y_v: MetersPerSecond(get("stateEstimate.vy")),
-            z_v: MetersPerSecond(get("stateEstimate.vz")),
+            // z_v: MetersPerSecond(get("stateEstimate.vz")),
             yaw: get("stateEstimate.yaw"),
         }
     }
@@ -107,14 +119,14 @@ impl Telemetry {
     pub fn vy(&self) -> f32 {
         self.y_v.0
     }
-    pub fn vz(&self) -> f32 {
-        self.z_v.0
-    }
+    // pub fn vz(&self) -> f32 {
+    //     self.z_v.0
+    // }
     pub fn yaw(&self) -> f32 {
         self.yaw
     }
     pub fn speed(&self) -> f32 {
-        (self.x_v.0.powi(2) + self.y_v.0.powi(2) + self.z_v.0.powi(2)).sqrt()
+        (self.x_v.0.powi(2) + self.y_v.0.powi(2)).sqrt()
     }
 }
 

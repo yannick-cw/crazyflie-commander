@@ -1,7 +1,9 @@
 use crate::Duration;
 use crate::Meters;
-use crate::control::command_unit::Command::{BilliardBox, Land, MoveToWaypoint, TakeOff};
-use crate::control::command_unit::{BilliardParams, Command, MetersPerSecond};
+use crate::control::command_unit::Command::{
+    BilliardBox, Land, MoveToWaypoint, SmoothPath, Takeoff,
+};
+use crate::control::command_unit::{BilliardParams, Command, MetersPerSecond, Waypoint};
 
 pub fn haus_nikolaus() -> Vec<Command> {
     let go_to_corner = |x: f32, y: f32| MoveToWaypoint {
@@ -11,7 +13,7 @@ pub fn haus_nikolaus() -> Vec<Command> {
         duration: Duration::from_secs(2),
     };
     vec![
-        TakeOff {
+        Takeoff {
             height: Meters(0.5),
             duration: Duration::from_secs(2),
         },
@@ -25,6 +27,55 @@ pub fn haus_nikolaus() -> Vec<Command> {
         go_to_corner(-0.5, 0.7), // Peak → TL
         go_to_corner(0.5, 0.0),  // TL → BR (diagonal)
         go_to_corner(0.0, 0.0),  // TL → BR (diagonal)
+        Land {
+            duration: Duration::from_secs(2),
+        },
+    ]
+}
+
+pub fn smooth_curves() -> Vec<Command> {
+    let one_loop = vec![
+        Waypoint {
+            x: Meters(0.5),
+            y: Meters(0.0),
+            z: Meters(1.0),
+        },
+        Waypoint {
+            x: Meters(2.0),
+            y: Meters(0.0),
+            z: Meters(0.5),
+        },
+        Waypoint {
+            x: Meters(1.5),
+            y: Meters(1.0),
+            z: Meters(0.5),
+        },
+        Waypoint {
+            x: Meters(0.0),
+            y: Meters(1.5),
+            z: Meters(0.5),
+        },
+        Waypoint {
+            x: Meters(0.0),
+            y: Meters(0.0),
+            z: Meters(0.5),
+        },
+    ];
+    vec![
+        Takeoff {
+            height: Meters(0.5),
+            duration: Duration::from_secs(2),
+        },
+        SmoothPath {
+            waypoints: one_loop.repeat(2),
+            speed: MetersPerSecond(1.5),
+        },
+        MoveToWaypoint {
+            x: Meters(0.0),
+            y: Meters(0.0),
+            z: Meters(0.5),
+            duration: Duration::from_secs(3),
+        },
         Land {
             duration: Duration::from_secs(2),
         },
@@ -45,7 +96,7 @@ pub fn billiard_box() -> Vec<Command> {
         hold_for: Duration::from_secs(10),
     };
     vec![
-        TakeOff {
+        Takeoff {
             height: Meters(0.5),
             duration: Duration::from_secs(2),
         },

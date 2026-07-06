@@ -135,14 +135,14 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
     out.push_str(&format!("  {speed:.2} m/s\n"));
 
     out.push_str(&format!(
-        "  x {:+.2}  y {:+.2}  z {:.2}   yaw {:+.0}°   v = ({:+.2}, {:+.2}, {:+.2})\n",
+        "  x {:+.2}  y {:+.2}  z {:.2}   yaw {:+.0}°   v = ({:+.2}, {:+.2} )\n",
         t.x(),
         t.y(),
         t.z(),
         t.yaw(),
         t.vx(),
         t.vy(),
-        t.vz(),
+        // t.vz(),
     ));
 
     print!("{out}");

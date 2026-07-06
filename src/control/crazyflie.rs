@@ -1,5 +1,6 @@
 use crate::control::billiard_box::run_billiard_loop;
 use crate::control::command_unit::{Command, CommandUnit, Telemetry};
+use crate::control::smooth_path::run_smooth_path;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
@@ -25,7 +26,8 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
         "stateEstimate.z",
         "stateEstimate.vx",
         "stateEstimate.vy",
-        "stateEstimate.vz",
+        "stateEstimate.yaw",
+        // "stateEstimate.vz",
     ];
 
     for var_name in log_var_names {
@@ -80,7 +82,7 @@ impl CommandUnit for CrazyflieCommandUnit {
 
         for command in mission {
             match command {
-                Command::TakeOff { height, duration } => {
+                Command::Takeoff { height, duration } => {
                     println!("Take Off...");
                     high_level_commander
                         .take_off(height.0, None, duration.as_secs_f32(), None)
@@ -132,6 +134,15 @@ impl CommandUnit for CrazyflieCommandUnit {
                         params,
                         high_level_commander,
                         commander,
+                        self.telemetry_watch_sender.subscribe(),
+                    )
+                    .await?
+                }
+                Command::SmoothPath { waypoints, speed } => {
+                    run_smooth_path(
+                        waypoints,
+                        commander,
+                        speed,
                         self.telemetry_watch_sender.subscribe(),
                     )
                     .await?

@@ -1,7 +1,7 @@
 use crate::control::command_unit::{Command, CommandUnit, Meters};
 use crate::control::crazyflie::setup_link;
 use crate::utils::errors::Res;
-use crate::utils::flight_paths::billiard_box;
+use crate::utils::flight_paths::smooth_curves;
 use crate::utils::render::{PathTrace, render_telemetry};
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ async fn main() -> Res<()> {
         }
     });
 
-    run_mission(billiard_box(), &real_unit).await?;
+    run_mission(smooth_curves(), &real_unit).await?;
     Ok(())
 }
 
