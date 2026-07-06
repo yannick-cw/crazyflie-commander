@@ -8,12 +8,12 @@ use std::io::Write;
 // char = one pixel. The drone's path is drawn at dot resolution and stays.
 
 // Map viewport (a zoom window centred on takeoff, not the geofence).
-const X_MIN: f64 = -1.5;
-const X_MAX: f64 = 1.5;
-const Y_MIN: f64 = -1.5;
-const Y_MAX: f64 = 1.5;
-const Z_MIN: f64 = 0.0;
-const Z_MAX: f64 = 2.0;
+const X_MIN: f32 = -1.5;
+const X_MAX: f32 = 1.5;
+const Y_MIN: f32 = -1.5;
+const Y_MAX: f32 = 1.5;
+const Z_MIN: f32 = 0.0;
+const Z_MAX: f32 = 2.0;
 
 // Terminal cells; Braille multiplies these by 2 (cols) and 4 (rows) in dots.
 const CELLS_W: usize = 60;
@@ -21,16 +21,11 @@ const CELLS_H: usize = 30;
 const DOT_W: usize = CELLS_W * 2; // 120 dots wide
 const DOT_H: usize = CELLS_H * 4; // 120 dots tall (≈ square viewport)
 
-const MAX_SPEED: f64 = 1.0; // m/s that maps to "full red"
+const MAX_SPEED: f32 = 1.0; // m/s that maps to "full red"
 const GAUGE_W: usize = 40;
 
 // Braille dot -> bit within a cell, indexed [sub_row 0..4][sub_col 0..2].
-const BRAILLE: [[u8; 2]; 4] = [
-    [0x01, 0x08],
-    [0x02, 0x10],
-    [0x04, 0x20],
-    [0x40, 0x80],
-];
+const BRAILLE: [[u8; 2]; 4] = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
 
 /// Persistent dot canvas of the flown path. Owned by the telemetry task so it
 /// survives across frames and is immune to task thread-hopping.
@@ -73,8 +68,8 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
     trace.extend_to(dot_row, dot_col);
     let drone_cell = (dot_row / 4, dot_col / 2);
 
-    let z_t = norm(t.z() as f64, Z_MIN, Z_MAX);
-    let z_fill_from = ((1.0 - z_t) * (CELLS_H as f64 - 1.0)).round() as usize;
+    let z_t = norm(t.z() as f32, Z_MIN, Z_MAX);
+    let z_fill_from = ((1.0 - z_t) * (CELLS_H as f32 - 1.0)).round() as usize;
 
     let mut out = String::with_capacity(32 * 1024);
     out.push_str("\x1b[2J\x1b[H");
@@ -126,7 +121,7 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
     }
     out.push_str("┘  └─┘ 0m\n");
 
-    let filled = (norm(speed, 0.0, MAX_SPEED) * GAUGE_W as f64).round() as usize;
+    let filled = (norm(speed, 0.0, MAX_SPEED) * GAUGE_W as f32).round() as usize;
     let (r, g, b) = speed_color(speed);
     out.push_str("  speed ");
     out.push_str(&format!("\x1b[38;2;{r};{g};{b}m"));
@@ -154,16 +149,16 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
     let _ = std::io::stdout().flush();
 }
 
-fn norm(v: f64, min: f64, max: f64) -> f64 {
+fn norm(v: f32, min: f32, max: f32) -> f32 {
     ((v - min) / (max - min)).clamp(0.0, 1.0)
 }
 
 fn to_dot_col(x: f32) -> usize {
-    (norm(x as f64, X_MIN, X_MAX) * (DOT_W as f64 - 1.0)).round() as usize
+    (norm(x as f32, X_MIN, X_MAX) * (DOT_W as f32 - 1.0)).round() as usize
 }
 
 fn to_dot_row(y: f32) -> usize {
-    ((1.0 - norm(y as f64, Y_MIN, Y_MAX)) * (DOT_H as f64 - 1.0)).round() as usize
+    ((1.0 - norm(y as f32, Y_MIN, Y_MAX)) * (DOT_H as f32 - 1.0)).round() as usize
 }
 
 // Bresenham over dot coordinates.
@@ -193,7 +188,7 @@ fn line(r0: usize, c0: usize, r1: usize, c1: usize) -> Vec<(usize, usize)> {
 }
 
 // green (slow) → yellow → red (fast)
-fn speed_color(speed: f64) -> (u8, u8, u8) {
+fn speed_color(speed: f32) -> (u8, u8, u8) {
     let t = norm(speed, 0.0, MAX_SPEED);
     if t < 0.5 {
         (lerp(0, 255, t / 0.5), 255, 0)
@@ -202,6 +197,6 @@ fn speed_color(speed: f64) -> (u8, u8, u8) {
     }
 }
 
-fn lerp(a: u8, b: u8, t: f64) -> u8 {
-    (a as f64 + (b as f64 - a as f64) * t).round() as u8
+fn lerp(a: u8, b: u8, t: f32) -> u8 {
+    (a as f32 + (b as f32 - a as f32) * t).round() as u8
 }

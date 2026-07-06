@@ -1,3 +1,4 @@
+use crate::control::billiard_box::run_billiard_loop;
 use crate::control::command_unit::{Command, CommandUnit, Telemetry};
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
@@ -31,9 +32,7 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
         log_block.add_variable(var_name).await?;
     }
 
-    let log_stream = log_block
-        .start(LogPeriod::from_millis(100).unwrap())
-        .await?;
+    let log_stream = log_block.start(LogPeriod::from_millis(10).unwrap()).await?;
 
     let (tx, _rx) = broadcast::channel(64);
     let (watch_tx, _watch_rx) = watch::channel(Telemetry::default());
@@ -67,6 +66,7 @@ pub struct CrazyflieCommandUnit {
 impl CommandUnit for CrazyflieCommandUnit {
     async fn run_mission(&self, mission: Vec<Command>) -> Res<()> {
         let high_level_commander = &self.cf.high_level_commander;
+        let commander = &self.cf.commander;
         // Reset the x,y,z,yaw estimated values before a new flight
         self.cf
             .param
@@ -127,6 +127,15 @@ impl CommandUnit for CrazyflieCommandUnit {
                     sleep(duration).await;
                 }
                 Command::Hover { duration } => sleep(duration).await,
+                Command::BilliardBox(params) => {
+                    run_billiard_loop(
+                        params,
+                        high_level_commander,
+                        commander,
+                        self.telemetry_watch_sender.subscribe(),
+                    )
+                    .await?
+                }
             }
         }
         Ok(())
