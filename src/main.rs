@@ -1,8 +1,8 @@
 use crate::control::command_unit::{Command, CommandUnit, Meters};
 use crate::control::crazyflie::setup_link;
 use crate::utils::errors::Res;
-use crate::utils::flight_paths::body_frame_smooth;
-use crate::utils::render::{render_telemetry, PathTrace};
+use crate::utils::flight_paths::orbit;
+use crate::utils::render::{PathTrace, render_telemetry};
 use std::time::Duration;
 
 pub mod control;
@@ -20,7 +20,7 @@ async fn main() -> Res<()> {
         }
     });
 
-    run_mission(body_frame_smooth(), &real_unit).await?;
+    run_mission(orbit(), &real_unit).await?;
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 use crate::Duration;
 use crate::Meters;
 use crate::control::command_unit::Command::{
-    BilliardBox, Land, MoveToWaypoint, SmoothPath, Takeoff,
+    BilliardBox, Land, MoveToWaypoint, Orbit, SmoothPath, Takeoff,
 };
 use crate::control::command_unit::FlightMode::{BodyFrame, Strafe};
 use crate::control::command_unit::{BilliardParams, Command, MetersPerSecond, Waypoint};
@@ -28,6 +28,30 @@ pub fn haus_nikolaus() -> Vec<Command> {
         go_to_corner(-0.5, 0.7), // Peak → TL
         go_to_corner(0.5, 0.0),  // TL → BR (diagonal)
         go_to_corner(0.0, 0.0),  // TL → BR (diagonal)
+        Land {
+            duration: Duration::from_secs(2),
+        },
+    ]
+}
+
+pub fn orbit() -> Vec<Command> {
+    vec![
+        Takeoff {
+            height: Meters(0.5),
+            duration: Duration::from_secs(2),
+        },
+        Orbit {
+            radius: Meters(0.7),
+            orbital_period: Duration::from_secs(2),
+            orbits: 10,
+            z: Meters(0.5),
+        },
+        MoveToWaypoint {
+            x: Meters(0.0),
+            y: Meters(0.0),
+            z: Meters(0.5),
+            duration: Duration::from_secs(2),
+        },
         Land {
             duration: Duration::from_secs(2),
         },

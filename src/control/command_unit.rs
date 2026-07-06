@@ -77,6 +77,12 @@ pub enum Command {
     //   |         |
     //  bl ------- |
     BilliardBox(BilliardParams),
+    Orbit {
+        radius: Meters,
+        orbital_period: Duration,
+        orbits: usize,
+        z: Meters,
+    },
     Hover {
         duration: Duration,
     },
