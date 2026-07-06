@@ -42,6 +42,11 @@ pub struct Waypoint {
     pub z: Meters,
 }
 
+pub enum FlightMode {
+    Strafe,
+    BodyFrame,
+}
+
 pub enum Command {
     Takeoff {
         height: Meters,
@@ -65,6 +70,7 @@ pub enum Command {
     SmoothPath {
         waypoints: Vec<Waypoint>,
         speed: MetersPerSecond,
+        flight_mode: FlightMode,
     },
     // fly a bouncing pattern in the rectangle define by bl tr
     //   | ------- tr

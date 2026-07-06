@@ -138,12 +138,13 @@ impl CommandUnit for CrazyflieCommandUnit {
                     )
                     .await?
                 }
-                Command::SmoothPath { waypoints, speed } => {
+                Command::SmoothPath { waypoints, speed, flight_mode } => {
                     run_smooth_path(
                         waypoints,
                         commander,
                         speed,
                         self.telemetry_watch_sender.subscribe(),
+                        flight_mode
                     )
                     .await?
                 }

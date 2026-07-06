@@ -1,4 +1,4 @@
-use crate::control::command_unit::{MetersPerSecond, Telemetry, Waypoint};
+use crate::control::command_unit::{FlightMode, MetersPerSecond, Telemetry, Waypoint};
 use crate::utils::errors::Res;
 use crazyflie_lib::subsystems::commander::Commander;
 use std::time::Duration;
@@ -10,6 +10,7 @@ pub async fn run_smooth_path(
     commander: &Commander,
     speed: MetersPerSecond,
     telemetry: watch::Receiver<Telemetry>,
+    flight_mode: FlightMode,
 ) -> Res<()> {
     let mut ticks = time::interval(Duration::from_millis(10));
     for waypoint in path {
@@ -46,9 +47,30 @@ pub async fn run_smooth_path(
                 speed.0 * dy.0 / delta_vec,
                 speed.0 * dz.0 / delta_vec,
             );
-            commander
-                .setpoint_velocity_world(vx, vy, vz, yaw_rate)
-                .await?;
+            match flight_mode {
+                FlightMode::Strafe => {
+                    commander
+                        .setpoint_velocity_world(vx, vy, vz, yaw_rate)
+                        .await?
+                }
+                FlightMode::BodyFrame => {
+                    // downside - this will accelerate potentially fast towards z
+                    // at lest not with specified speed
+                    // alternative would be to use world frame but translate body frame into that
+                    // commander
+                    //     .setpoint_hover(speed.0, 0.0, yaw_rate, waypoint.z.0)
+                    //     .await?
+                    let yaw_rad = yaw.to_radians();
+                    // splitting the speed in yaw direction into its x and y speed
+                    // that I can then use in the world frame for vx vy
+                    // and vz stays from above
+                    let vx_world = speed.0 * yaw_rad.cos();
+                    let vy_world = speed.0 * yaw_rad.sin();
+                    commander
+                        .setpoint_velocity_world(vx_world, vy_world, vz, yaw_rate)
+                        .await?;
+                }
+            }
             ticks.tick().await;
         }
     }

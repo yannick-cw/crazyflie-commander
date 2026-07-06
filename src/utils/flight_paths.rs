@@ -3,6 +3,7 @@ use crate::Meters;
 use crate::control::command_unit::Command::{
     BilliardBox, Land, MoveToWaypoint, SmoothPath, Takeoff,
 };
+use crate::control::command_unit::FlightMode::{BodyFrame, Strafe};
 use crate::control::command_unit::{BilliardParams, Command, MetersPerSecond, Waypoint};
 
 pub fn haus_nikolaus() -> Vec<Command> {
@@ -69,6 +70,57 @@ pub fn smooth_curves() -> Vec<Command> {
         SmoothPath {
             waypoints: one_loop.repeat(2),
             speed: MetersPerSecond(1.5),
+            flight_mode: Strafe,
+        },
+        MoveToWaypoint {
+            x: Meters(0.0),
+            y: Meters(0.0),
+            z: Meters(0.5),
+            duration: Duration::from_secs(3),
+        },
+        Land {
+            duration: Duration::from_secs(2),
+        },
+    ]
+}
+
+pub fn body_frame_smooth() -> Vec<Command> {
+    let one_loop = vec![
+        Waypoint {
+            x: Meters(0.75),
+            y: Meters(0.0),
+            z: Meters(1.0),
+        },
+        Waypoint {
+            x: Meters(1.5),
+            y: Meters(0.0),
+            z: Meters(0.5),
+        },
+        Waypoint {
+            x: Meters(1.5),
+            y: Meters(1.0),
+            z: Meters(0.5),
+        },
+        Waypoint {
+            x: Meters(0.3),
+            y: Meters(1.5),
+            z: Meters(0.5),
+        },
+        Waypoint {
+            x: Meters(0.0),
+            y: Meters(0.3),
+            z: Meters(0.5),
+        },
+    ];
+    vec![
+        Takeoff {
+            height: Meters(0.5),
+            duration: Duration::from_secs(2),
+        },
+        SmoothPath {
+            waypoints: one_loop.repeat(2),
+            speed: MetersPerSecond(1.7),
+            flight_mode: BodyFrame,
         },
         MoveToWaypoint {
             x: Meters(0.0),
