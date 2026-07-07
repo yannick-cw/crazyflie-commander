@@ -1,7 +1,7 @@
 use crate::control::command_unit::{Command, CommandUnit, Meters};
 use crate::control::crazyflie::setup_link;
 use crate::utils::errors::Res;
-use crate::utils::flight_paths::orbit;
+use crate::utils::flight_paths::lawn_mower;
 use crate::utils::render::{PathTrace, render_telemetry};
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ async fn main() -> Res<()> {
         }
     });
 
-    run_mission(orbit(), &real_unit).await?;
+    run_mission(lawn_mower(), &real_unit).await?;
     Ok(())
 }
 

@@ -158,6 +158,54 @@ pub fn body_frame_smooth() -> Vec<Command> {
     ]
 }
 
+pub fn lawn_mower() -> Vec<Command> {
+    fn lane(y: f32) -> Vec<Waypoint> {
+        vec![
+            Waypoint {
+                x: Meters(0.0),
+                y: Meters(y),
+                z: Meters(0.3),
+            },
+            Waypoint {
+                x: Meters(1.3),
+                y: Meters(y),
+                z: Meters(0.3),
+            },
+            Waypoint {
+                x: Meters(1.3),
+                y: Meters(y + 0.2),
+                z: Meters(0.3),
+            },
+            Waypoint {
+                x: Meters(0.0),
+                y: Meters(y + 0.2),
+                z: Meters(0.3),
+            },
+        ]
+    }
+    let points: Vec<_> = (0..4).flat_map(|i| lane(i as f32 * 0.4)).collect();
+    vec![
+        Takeoff {
+            height: Meters(0.3),
+            duration: Duration::from_secs(2),
+        },
+        SmoothPath {
+            waypoints: points,
+            speed: MetersPerSecond(0.8),
+            flight_mode: BodyFrame,
+        },
+        MoveToWaypoint {
+            x: Meters(0.0),
+            y: Meters(0.0),
+            z: Meters(0.3),
+            duration: Duration::from_secs(3),
+        },
+        Land {
+            duration: Duration::from_secs(2),
+        },
+    ]
+}
+
 pub fn billiard_box() -> Vec<Command> {
     let base_box = BilliardParams {
         bl_x: Meters(0.0),

@@ -21,7 +21,7 @@ impl Display for MetersPerSecond {
         write!(f, "{}m/s", self.0)
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BilliardParams {
     pub bl_x: Meters,
     pub bl_y: Meters,
@@ -35,18 +35,20 @@ pub struct BilliardParams {
     pub hold_for: Duration,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Waypoint {
     pub x: Meters,
     pub y: Meters,
     pub z: Meters,
 }
 
+#[derive(Debug)]
 pub enum FlightMode {
     Strafe,
     BodyFrame,
 }
 
+#[derive(Debug)]
 pub enum Command {
     Takeoff {
         height: Meters,
