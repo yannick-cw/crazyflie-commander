@@ -1,4 +1,4 @@
-use crate::control::command_unit::{Command, CommandUnit, Telemetry};
+use crate::control::command_unit::{Abort, Command, CommandUnit, Telemetry};
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::smooth_path::run_smooth_path;
@@ -7,6 +7,7 @@ use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use std::time::Duration;
+use tokio::select;
 use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
 
@@ -66,9 +67,8 @@ pub struct CrazyflieCommandUnit {
     telemetry_watch_sender: watch::Sender<Telemetry>,
 }
 
-impl CommandUnit for CrazyflieCommandUnit {
-    // todo: safe_run_mussion with select! on cancel signal and => {land or emergency stop afterwards}
-    async fn run_mission(&self, mission: Vec<Command>) -> Res<()> {
+impl CrazyflieCommandUnit {
+    async fn unsafe_run_mission(&self, mission: Vec<Command>) -> Res<()> {
         let high_level_commander = &self.cf.high_level_commander;
         let commander = &self.cf.commander;
         // Reset the x,y,z,yaw estimated values before a new flight
@@ -174,6 +174,37 @@ impl CommandUnit for CrazyflieCommandUnit {
             }
         }
         Ok(())
+    }
+}
+
+impl CommandUnit for CrazyflieCommandUnit {
+    async fn run_mission(
+        &self,
+        mission: Vec<Command>,
+        abort_signal: impl Future<Output = Option<Abort>>,
+    ) -> Res<()> {
+        Ok(select! {
+            mission = self.unsafe_run_mission(mission) => {
+                println!("Mission complete");
+                mission?
+            }
+            Some(abort) = abort_signal => {
+                match abort {
+                    Abort::HardStop => {
+                        println!("HARD STOP..");
+                        self.cf.localization.emergency.send_emergency_stop().await?;
+                        sleep(Duration::from_secs(1)).await
+                    }
+                    Abort::Land => {
+                        println!("Abort Land..");
+                        self.cf.commander.notify_setpoint_stop(0).await?;
+                        self.cf.high_level_commander.land(0.0, None, 3.0, None).await?;
+                        sleep(Duration::from_secs(3)).await
+                    }
+                }
+            }
+
+        })
     }
 
     fn telemetry(&self) -> broadcast::Receiver<Telemetry> {

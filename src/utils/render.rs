@@ -73,13 +73,13 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
 
     let mut out = String::with_capacity(32 * 1024);
     out.push_str("\x1b[2J\x1b[H");
-    out.push_str("  \x1b[1mCRAZYFLIE · LIVE\x1b[0m   (top-down · 3m viewport · z 0-2m)\n");
+    out.push_str("  \x1b[1mCRAZYFLIE · LIVE\x1b[0m   (top-down · 3m viewport · z 0-2m)\r\n");
 
     out.push_str("  ┌");
     for _ in 0..CELLS_W {
         out.push('─');
     }
-    out.push_str("┐  ┌─┐\n");
+    out.push_str("┐  ┌─┐\r\n");
 
     for cell_row in 0..CELLS_H {
         out.push_str("  │");
@@ -112,14 +112,14 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
         if cell_row == z_fill_from {
             out.push_str(&format!(" {:.2}m", t.z()));
         }
-        out.push('\n');
+        out.push_str("\r\n");
     }
 
     out.push_str("  └");
     for _ in 0..CELLS_W {
         out.push('─');
     }
-    out.push_str("┘  └─┘ 0m\n");
+    out.push_str("┘  └─┘ 0m\r\n");
 
     let filled = (norm(speed, 0.0, MAX_SPEED) * GAUGE_W as f32).round() as usize;
     let (r, g, b) = speed_color(speed);
@@ -132,10 +132,10 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
     for _ in filled..GAUGE_W {
         out.push('░');
     }
-    out.push_str(&format!("  {speed:.2} m/s\n"));
+    out.push_str(&format!("  {speed:.2} m/s\r\n"));
 
     out.push_str(&format!(
-        "  x {:+.2}  y {:+.2}  z {:.2}   yaw {:+.0}°   v = ({:+.2}, {:+.2} )\n",
+        "  x {:+.2}  y {:+.2}  z {:.2}   yaw {:+.0}°   v = ({:+.2}, {:+.2} )\r\n",
         t.x(),
         t.y(),
         t.z(),

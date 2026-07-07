@@ -56,7 +56,6 @@ pub async fn run_orbit(
         ticks.tick().await;
     }
 
-    commander.setpoint_stop().await?;
     commander.notify_setpoint_stop(0).await?;
     Ok(())
 }

@@ -75,7 +75,6 @@ pub async fn run_smooth_path(
         }
     }
 
-    commander.setpoint_stop().await?;
     commander.notify_setpoint_stop(0).await?;
     Ok(())
 }

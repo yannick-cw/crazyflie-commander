@@ -6,6 +6,12 @@ use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
 
+#[derive(Clone, Copy, Debug)]
+pub enum Abort {
+    HardStop,
+    Land,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul, Div)]
 pub struct Meters(pub f32);
 impl Display for Meters {
@@ -146,7 +152,11 @@ impl Telemetry {
 
 #[allow(async_fn_in_trait)]
 pub trait CommandUnit {
-    async fn run_mission(&self, mission: Vec<Command>) -> Res<()>;
+    async fn run_mission(
+        &self,
+        mission: Vec<Command>,
+        abort_signal: impl Future<Output = Option<Abort>>,
+    ) -> Res<()>;
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
     fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
 }

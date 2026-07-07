@@ -72,7 +72,6 @@ pub async fn run_billiard_loop(
     }
 
     // return to center
-    commander.setpoint_stop().await?;
     commander.notify_setpoint_stop(0).await?;
     // return to bl starting point
     high_level_commander

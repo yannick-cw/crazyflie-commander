@@ -1,8 +1,12 @@
-use crate::control::command_unit::{Command, CommandUnit, Meters};
+use crate::control::command_unit::{Abort, Command, CommandUnit, Meters};
 use crate::control::crazyflie::setup_link;
 use crate::utils::errors::Res;
-use crate::utils::flight_paths::lawn_mower;
+use crate::utils::flight_paths::orbit;
 use crate::utils::render::{PathTrace, render_telemetry};
+use crossterm::event::{Event, EventStream, KeyCode};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use futures::StreamExt;
+use std::future;
 use std::time::Duration;
 
 pub mod control;
@@ -20,10 +24,23 @@ async fn main() -> Res<()> {
         }
     });
 
-    run_mission(lawn_mower(), &real_unit).await?;
+    run_mission(orbit(), &real_unit).await?;
     Ok(())
 }
 
 async fn run_mission(mission: Vec<Command>, command_unit: &impl CommandUnit) -> Res<()> {
-    command_unit.run_mission(mission).await
+    enable_raw_mode().unwrap();
+
+    let mut mission_abort_event = EventStream::new().filter_map(|evt| {
+        future::ready(match evt {
+            Ok(Event::Key(key)) if key.code == KeyCode::Char('x') => Some(Abort::HardStop),
+            Ok(Event::Key(key)) if key.code == KeyCode::Char('l') => Some(Abort::Land),
+            _ => None,
+        })
+    });
+    let abort_signal = async move { mission_abort_event.next().await };
+
+    command_unit.run_mission(mission, abort_signal).await?;
+    disable_raw_mode().unwrap();
+    Ok(())
 }
