@@ -1,19 +1,12 @@
-use crate::control::command_unit::{BilliardParams, Meters, Telemetry};
-use crate::control::low_level_engine::{Setpoint, Step, StepState, run_commander_steps};
+use crate::control::command_unit::{BilliardParams, Meters};
+use crate::control::low_level_engine::{Setpoint, Step, StepState};
+use crate::control::vehicle::Autopilot;
 use crate::utils::errors::Res;
 use crate::utils::math::{SpeedVec, inverse_v_when_oob};
-use crazyflie_lib::subsystems::commander::Commander;
-use crazyflie_lib::subsystems::high_level_commander::HighLevelCommander;
 use std::time::Duration;
-use tokio::sync::watch;
 use tokio::time::sleep;
 
-pub async fn run_billiard_loop(
-    billiard_params: BilliardParams,
-    high_level_commander: &HighLevelCommander,
-    commander: &Commander,
-    telemetry: watch::Receiver<Telemetry>,
-) -> Res<()> {
+pub async fn run_billiard_loop(billiard_params: BilliardParams, vehicle: &Autopilot) -> Res<()> {
     let BilliardParams {
         bl_x,
         bl_y,
@@ -31,24 +24,26 @@ pub async fn run_billiard_loop(
     let z_min = Meters(0.5);
 
     // move to center first
-    high_level_commander
+    vehicle
         .go_to(
-            middle_x.0, middle_y.0, z_min.0, 0.0, 3.0, false, false, None,
+            middle_x,
+            middle_y,
+            z_min,
+            0.0,
+            Duration::from_secs(3),
+            false,
+            false,
         )
         .await?;
     sleep(Duration::from_secs(3)).await;
 
-    run_commander_steps(
-        commander,
-        &telemetry,
-        SpeedVec { vx, vy, vz },
-        billiard_steps(billiard_params),
-    )
-    .await?;
+    vehicle
+        .run_steps(SpeedVec { vx, vy, vz }, billiard_steps(billiard_params))
+        .await?;
 
     // return to bl starting point
-    high_level_commander
-        .go_to(bl_x.0, bl_y.0, z_min.0, 0.0, 2.0, false, false, None)
+    vehicle
+        .go_to(bl_x, bl_y, z_min, 0.0, Duration::from_secs(2), false, false)
         .await?;
     sleep(Duration::from_millis(2200)).await;
     Ok(())

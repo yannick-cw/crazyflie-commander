@@ -2,11 +2,11 @@ use crate::control::command_unit::{Abort, Command, CommandUnit, Telemetry};
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::smooth_path::run_smooth_path;
+use crate::control::vehicle::Autopilot;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
-use std::time::Duration;
 use tokio::select;
 use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
@@ -66,139 +66,55 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
         }
     });
     Ok(CrazyflieCommandUnit {
-        cf,
+        autopilot: Autopilot::new(cf, watch_tx.subscribe()),
         telemetry_sender: tx,
-        telemetry_watch_sender: watch_tx,
     })
 }
 
 pub struct CrazyflieCommandUnit {
-    cf: Crazyflie,
+    autopilot: Autopilot,
     telemetry_sender: broadcast::Sender<Telemetry>,
-    telemetry_watch_sender: watch::Sender<Telemetry>,
 }
 
 impl CrazyflieCommandUnit {
     async fn start_mission(&self, mission: Vec<Command>) -> Res<()> {
-        let high_level_commander = &self.cf.high_level_commander;
-        let commander = &self.cf.commander;
-        // Reset the x,y,z,yaw estimated values before a new flight
-        self.cf
-            .param
-            .set_lossy("kalman.resetEstimation", 1.0)
-            .await?;
-        sleep(Duration::from_millis(100)).await;
-        self.cf
-            .param
-            .set_lossy("kalman.resetEstimation", 0.0)
-            .await?;
+        let vehicle = &self.autopilot;
+
+        vehicle.reset_estimator().await?;
 
         for command in mission {
             match command {
                 Command::Takeoff { height, duration } => {
                     println!("Take Off...");
-                    high_level_commander
-                        .take_off(height.0, None, duration.as_secs_f32(), None)
-                        .await?;
-                    sleep(duration).await;
+                    vehicle.take_off(height, duration).await?;
                 }
                 Command::Move { x, y, z, duration } => {
                     println!("Moving...");
-                    high_level_commander
-                        .go_to(
-                            x.0,
-                            y.0,
-                            z.0,
-                            0.0,
-                            duration.as_secs_f32(),
-                            true,
-                            false,
-                            None,
-                        )
-                        .await?;
-                    sleep(duration).await;
+                    vehicle.go_to(x, y, z, 0.0, duration, true, false).await?;
                 }
                 Command::MoveToWaypoint { x, y, z, duration } => {
                     println!("Moving to point...");
-                    high_level_commander
-                        .go_to(
-                            x.0,
-                            y.0,
-                            z.0,
-                            0.0,
-                            duration.as_secs_f32(),
-                            false,
-                            false,
-                            None,
-                        )
-                        .await?;
-                    sleep(duration).await;
+                    vehicle.go_to(x, y, z, 0.0, duration, false, false).await?;
                 }
                 Command::Land { duration } => {
                     println!("Landing...");
-                    high_level_commander
-                        .land(0.0, None, duration.as_secs_f32(), None)
-                        .await?;
-                    sleep(duration).await;
+                    vehicle.land(duration).await?;
                 }
                 Command::Hover { duration } => sleep(duration).await,
-                Command::BilliardBox(params) => {
-                    run_billiard_loop(
-                        params,
-                        high_level_commander,
-                        commander,
-                        self.telemetry_watch_sender.subscribe(),
-                    )
-                    .await?
-                }
+                Command::BilliardBox(params) => run_billiard_loop(params, vehicle).await?,
                 Command::SmoothPath {
                     waypoints,
                     speed,
                     flight_mode,
-                } => {
-                    run_smooth_path(
-                        waypoints,
-                        commander,
-                        speed,
-                        self.telemetry_watch_sender.subscribe(),
-                        flight_mode,
-                    )
-                    .await?
-                }
+                } => run_smooth_path(waypoints, vehicle, speed, flight_mode).await?,
                 Command::Orbit {
                     radius,
                     orbital_period,
                     orbits,
                     z,
-                } => {
-                    run_orbit(
-                        radius,
-                        orbital_period,
-                        orbits,
-                        z,
-                        commander,
-                        high_level_commander,
-                        self.telemetry_watch_sender.subscribe(),
-                    )
-                    .await?
-                }
+                } => run_orbit(radius, orbital_period, orbits, z, vehicle).await?,
             }
         }
-        Ok(())
-    }
-
-    async fn return_home(&self) -> Res<()> {
-        self.cf.commander.notify_setpoint_stop(0).await?;
-        self.cf
-            .high_level_commander
-            .go_to(0.0, 0.0, 0.5, 0.0, 3.0, false, false, None)
-            .await?;
-        sleep(Duration::from_secs(3)).await;
-        self.cf
-            .high_level_commander
-            .land(0.0, None, 3.0, None)
-            .await?;
-        sleep(Duration::from_secs(3)).await;
         Ok(())
     }
 
@@ -206,13 +122,11 @@ impl CrazyflieCommandUnit {
         match abort {
             Abort::HardStop => {
                 println!("HARD STOP..");
-                self.cf.localization.emergency.send_emergency_stop().await?;
-                sleep(Duration::from_secs(1)).await;
-                Ok(())
+                self.autopilot.emergency_stop().await
             }
             Abort::Land => {
                 println!("Abort Land..");
-                self.return_home().await
+                self.autopilot.return_home().await
             }
         }
     }
@@ -224,7 +138,7 @@ impl CommandUnit for CrazyflieCommandUnit {
         mission: Vec<Command>,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
-        let mut telemetry_rx = self.telemetry_watch_sender.subscribe();
+        let mut telemetry_rx = self.autopilot.telemetry.clone();
         let is_low_bat = telemetry_rx.wait_for(Telemetry::is_low_bat);
 
         // runs mission or aborts on keypress or on low battery
@@ -238,7 +152,7 @@ impl CommandUnit for CrazyflieCommandUnit {
             }
             _ = is_low_bat=> {
                 println!("Low battery - returning home");
-                self.return_home().await?
+                self.autopilot.return_home().await?
             }
         })
     }

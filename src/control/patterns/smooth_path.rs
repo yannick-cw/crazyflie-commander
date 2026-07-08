@@ -1,32 +1,24 @@
 use crate::control::command_unit::{FlightMode, Meters, MetersPerSecond, Telemetry, Waypoint};
-use crate::control::low_level_engine::{Setpoint, Step, StepState, run_commander_steps};
+use crate::control::low_level_engine::{Setpoint, Step, StepState};
+use crate::control::vehicle::Autopilot;
 use crate::utils::errors::Res;
 use crate::utils::math::{
     SpeedVec, WaypointDist, calc_axis_speed, calc_yaw_rate, split_relative_speed_to_absolute,
     waypoint_deltas,
 };
-use crazyflie_lib::subsystems::commander::Commander;
-use tokio::sync::watch;
 
 pub async fn run_smooth_path(
     path: Vec<Waypoint>,
-    commander: &Commander,
+    vehicle: &Autopilot,
     speed: MetersPerSecond,
-    telemetry: watch::Receiver<Telemetry>,
     flight_mode: FlightMode,
 ) -> Res<()> {
     // faster flying, wider radius to start the turn
     let radius = Meters(speed.0 * 0.4);
 
-    run_commander_steps(
-        commander,
-        &telemetry,
-        0,
-        smooth_path_steps(path, radius, flight_mode, speed),
-    )
-    .await?;
-
-    Ok(())
+    vehicle
+        .run_steps(0, smooth_path_steps(path, radius, flight_mode, speed))
+        .await
 }
 fn smooth_path_steps(
     waypoints: Vec<Waypoint>,

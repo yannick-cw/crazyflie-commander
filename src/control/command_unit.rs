@@ -5,7 +5,7 @@ use crazyflie_lib::subsystems::log::LogData;
 use derive_more::{Add, Div, Mul, Sub};
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Abort {
