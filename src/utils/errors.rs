@@ -6,6 +6,8 @@ pub enum MissionError {
     LinkFailure(#[from] crazyflie_link::Error),
     #[error("Failed to establish connection :{0}")]
     ConnectionFailure(#[from] crazyflie_lib::Error),
+    #[error("Failed while rendering")]
+    RenderFailure,
 }
 
 pub type Res<A> = Result<A, MissionError>;

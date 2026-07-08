@@ -7,19 +7,21 @@ use std::io::Write;
 // 2x4 dot matrix (U+2800..U+28FF), giving an 8x-denser canvas than one
 // char = one pixel. The drone's path is drawn at dot resolution and stays.
 
-// Map viewport (a zoom window centred on takeoff, not the geofence).
-const X_MIN: f32 = -1.5;
-const X_MAX: f32 = 1.5;
-const Y_MIN: f32 = -1.5;
-const Y_MAX: f32 = 1.5;
+// Map viewport: positive-only quadrant, (0,0) at the bottom-left corner
+// (takeoff origin), 2.5m per side.
+const X_MIN: f32 = 0.0;
+const X_MAX: f32 = 2.5;
+const Y_MIN: f32 = 0.0;
+const Y_MAX: f32 = 2.5;
 const Z_MIN: f32 = 0.0;
 const Z_MAX: f32 = 2.0;
 
 // Terminal cells; Braille multiplies these by 2 (cols) and 4 (rows) in dots.
-const CELLS_W: usize = 60;
-const CELLS_H: usize = 30;
-const DOT_W: usize = CELLS_W * 2; // 120 dots wide
-const DOT_H: usize = CELLS_H * 4; // 120 dots tall (≈ square viewport)
+// Kept small so the whole frame fits a normal terminal window (no scroll).
+const CELLS_W: usize = 36;
+const CELLS_H: usize = 18;
+const DOT_W: usize = CELLS_W * 2; // 72 dots wide
+const DOT_H: usize = CELLS_H * 4; // 72 dots tall (≈ square viewport)
 
 const MAX_SPEED: f32 = 1.0; // m/s that maps to "full red"
 const GAUGE_W: usize = 40;
@@ -73,7 +75,7 @@ pub fn render_telemetry(t: &Telemetry, trace: &mut PathTrace) {
 
     let mut out = String::with_capacity(32 * 1024);
     out.push_str("\x1b[2J\x1b[H");
-    out.push_str("  \x1b[1mCRAZYFLIE · LIVE\x1b[0m   (top-down · 3m viewport · z 0-2m)\r\n");
+    out.push_str("  \x1b[1mCRAZYFLIE · LIVE\x1b[0m   (top-down · 2.5m viewport · z 0-2m)\r\n");
 
     out.push_str("  ┌");
     for _ in 0..CELLS_W {

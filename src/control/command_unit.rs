@@ -1,3 +1,4 @@
+use crate::control::command_unit::BatteryLevel::High;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
@@ -99,6 +100,17 @@ pub enum Command {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BatteryLevel {
+    Low,
+    High,
+}
+impl Default for BatteryLevel {
+    fn default() -> Self {
+        High
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Telemetry {
     pub x: Meters,
@@ -108,19 +120,30 @@ pub struct Telemetry {
     pub y_v: MetersPerSecond,
     // pub z_v: MetersPerSecond,
     pub yaw: f32,
+    pub battery_level: BatteryLevel,
 }
 impl Telemetry {
-    pub fn from_log_data(l: LogData) -> Self {
-        let get = |name: &str| l.data.get(name).map(Value::to_f64_lossy).unwrap_or(0.0) as f32;
+    pub fn from_log_data(tele_log: &LogData, battery_log: &LogData) -> Self {
+        let get = |name: &str, l: &LogData| {
+            l.data.get(name).map(Value::to_f64_lossy).unwrap_or(0.0) as f32
+        };
         Self {
-            x: Meters(get("stateEstimate.x")),
-            y: Meters(get("stateEstimate.y")),
-            z: Meters(get("stateEstimate.z")),
-            x_v: MetersPerSecond(get("stateEstimate.vx")),
-            y_v: MetersPerSecond(get("stateEstimate.vy")),
+            x: Meters(get("stateEstimate.x", tele_log)),
+            y: Meters(get("stateEstimate.y", tele_log)),
+            z: Meters(get("stateEstimate.z", tele_log)),
+            x_v: MetersPerSecond(get("stateEstimate.vx", tele_log)),
+            y_v: MetersPerSecond(get("stateEstimate.vy", tele_log)),
             // z_v: MetersPerSecond(get("stateEstimate.vz")),
-            yaw: get("stateEstimate.yaw"),
+            yaw: get("stateEstimate.yaw", tele_log),
+            battery_level: if get("pm.state", battery_log) >= 3.0 {
+                BatteryLevel::Low
+            } else {
+                BatteryLevel::High
+            },
         }
+    }
+    pub fn is_low_bat(&self) -> bool {
+        self.battery_level == BatteryLevel::Low
     }
 }
 impl Telemetry {

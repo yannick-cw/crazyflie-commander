@@ -21,7 +21,10 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
 
     let cf = Crazyflie::connect_from_uri(&link_context, uri, crazyflie_lib::NoTocCache).await?;
 
-    let mut log_block = cf.log.create_block().await?;
+    let mut log_block_telemetry = cf.log.create_block().await?;
+    let mut log_stream_battery = cf.log.create_block().await?;
+    log_stream_battery.add_variable("pm.state").await?;
+
     let log_var_names = [
         "stateEstimate.x",
         "stateEstimate.y",
@@ -33,10 +36,16 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     ];
 
     for var_name in log_var_names {
-        log_block.add_variable(var_name).await?;
+        log_block_telemetry.add_variable(var_name).await?;
     }
 
-    let log_stream = log_block.start(LogPeriod::from_millis(10).unwrap()).await?;
+    let log_stream_telemetry = log_block_telemetry
+        .start(LogPeriod::from_millis(10).unwrap())
+        .await?;
+
+    let log_stream_battery = log_stream_battery
+        .start(LogPeriod::from_millis(10).unwrap())
+        .await?;
 
     let (tx, _rx) = broadcast::channel(64);
     let (watch_tx, _watch_rx) = watch::channel(Telemetry::default());
@@ -44,13 +53,15 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     let local_watch_tx = watch_tx.clone();
     tokio::spawn(async move {
         loop {
-            match log_stream.next().await {
-                Ok(data) => {
-                    let telemetry = Telemetry::from_log_data(data);
+            let (tele_block, battery_block) =
+                tokio::join!(log_stream_telemetry.next(), log_stream_battery.next());
+            match (tele_block, battery_block) {
+                (Ok(tele_log), Ok(bat_log)) => {
+                    let telemetry = Telemetry::from_log_data(&tele_log, &bat_log);
                     let _ = local_sender_tx.send(telemetry);
                     let _ = local_watch_tx.send(telemetry);
                 }
-                Err(_) => break,
+                _ => break,
             }
         }
     });
@@ -68,7 +79,7 @@ pub struct CrazyflieCommandUnit {
 }
 
 impl CrazyflieCommandUnit {
-    async fn unsafe_run_mission(&self, mission: Vec<Command>) -> Res<()> {
+    async fn start_mission(&self, mission: Vec<Command>) -> Res<()> {
         let high_level_commander = &self.cf.high_level_commander;
         let commander = &self.cf.commander;
         // Reset the x,y,z,yaw estimated values before a new flight
@@ -175,6 +186,36 @@ impl CrazyflieCommandUnit {
         }
         Ok(())
     }
+
+    async fn return_home(&self) -> Res<()> {
+        self.cf.commander.notify_setpoint_stop(0).await?;
+        self.cf
+            .high_level_commander
+            .go_to(0.0, 0.0, 0.5, 0.0, 3.0, false, false, None)
+            .await?;
+        sleep(Duration::from_secs(3)).await;
+        self.cf
+            .high_level_commander
+            .land(0.0, None, 3.0, None)
+            .await?;
+        sleep(Duration::from_secs(3)).await;
+        Ok(())
+    }
+
+    async fn abort_mission(&self, abort: Abort) -> Res<()> {
+        match abort {
+            Abort::HardStop => {
+                println!("HARD STOP..");
+                self.cf.localization.emergency.send_emergency_stop().await?;
+                sleep(Duration::from_secs(1)).await;
+                Ok(())
+            }
+            Abort::Land => {
+                println!("Abort Land..");
+                self.return_home().await
+            }
+        }
+    }
 }
 
 impl CommandUnit for CrazyflieCommandUnit {
@@ -183,27 +224,22 @@ impl CommandUnit for CrazyflieCommandUnit {
         mission: Vec<Command>,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
+        let mut telemetry_rx = self.telemetry_watch_sender.subscribe();
+        let is_low_bat = telemetry_rx.wait_for(Telemetry::is_low_bat);
+
+        // runs mission or aborts on keypress or on low battery
         Ok(select! {
-            mission = self.unsafe_run_mission(mission) => {
+            mission = self.start_mission(mission) => {
                 println!("Mission complete");
                 mission?
             }
             Some(abort) = abort_signal => {
-                match abort {
-                    Abort::HardStop => {
-                        println!("HARD STOP..");
-                        self.cf.localization.emergency.send_emergency_stop().await?;
-                        sleep(Duration::from_secs(1)).await
-                    }
-                    Abort::Land => {
-                        println!("Abort Land..");
-                        self.cf.commander.notify_setpoint_stop(0).await?;
-                        self.cf.high_level_commander.land(0.0, None, 3.0, None).await?;
-                        sleep(Duration::from_secs(3)).await
-                    }
-                }
+                self.abort_mission(abort).await?
             }
-
+            _ = is_low_bat=> {
+                println!("Low battery - returning home");
+                self.return_home().await?
+            }
         })
     }
 

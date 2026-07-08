@@ -42,8 +42,8 @@ pub fn orbit() -> Vec<Command> {
         },
         Orbit {
             radius: Meters(0.7),
-            orbital_period: Duration::from_secs(2),
-            orbits: 10,
+            orbital_period: Duration::from_secs(4),
+            orbits: 30,
             z: Meters(0.5),
         },
         MoveToWaypoint {
