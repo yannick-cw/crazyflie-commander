@@ -246,8 +246,4 @@ impl CommandUnit for CrazyflieCommandUnit {
     fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
         self.telemetry_sender.subscribe()
     }
-
-    fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
-        self.telemetry_watch_sender.subscribe()
-    }
 }

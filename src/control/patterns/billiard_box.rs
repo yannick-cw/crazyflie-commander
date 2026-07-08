@@ -1,15 +1,15 @@
 use crate::control::command_unit::{BilliardParams, Meters, Telemetry};
+use crate::control::low_level_engine::{Setpoint, Step, StepState, run_commander_steps};
 use crate::utils::errors::Res;
-use crate::utils::math::inverse_v_when_oob;
+use crate::utils::math::{SpeedVec, inverse_v_when_oob};
 use crazyflie_lib::subsystems::commander::Commander;
 use crazyflie_lib::subsystems::high_level_commander::HighLevelCommander;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::watch;
-use tokio::time;
 use tokio::time::sleep;
 
 pub async fn run_billiard_loop(
-    bx: BilliardParams,
+    billiard_params: BilliardParams,
     high_level_commander: &HighLevelCommander,
     commander: &Commander,
     telemetry: watch::Receiver<Telemetry>,
@@ -17,15 +17,13 @@ pub async fn run_billiard_loop(
     let BilliardParams {
         bl_x,
         bl_y,
-        bl_z,
         tr_x,
         tr_y,
-        tr_z,
         vx,
         vy,
         vz,
-        hold_for,
-    } = bx;
+        ..
+    } = billiard_params;
 
     let middle_x = (tr_x + bl_x) / 2.0;
     let middle_y = (tr_y + bl_y) / 2.0;
@@ -40,36 +38,43 @@ pub async fn run_billiard_loop(
         .await?;
     sleep(Duration::from_secs(3)).await;
 
-    let start_time = Instant::now();
+    run_commander_steps(
+        commander,
+        &telemetry,
+        SpeedVec { vx, vy, vz },
+        billiard_steps(billiard_params),
+    )
+    .await?;
 
-    // start acceleration
-    commander
-        .setpoint_velocity_world(vx.0, vy.0, vz.0, 0.0)
-        .await?;
-    sleep(Duration::from_millis(100)).await;
-
-    let mut ticks = time::interval(Duration::from_millis(10));
-    let mut vx = vx;
-    let mut vy = vy;
-    let mut vz = vz;
-    while start_time + hold_for > Instant::now() {
-        // deref immediately to not hold this and block
-        let tele = *telemetry.borrow();
-        vx = inverse_v_when_oob(tele.x, tr_x, bl_x, vx);
-        vy = inverse_v_when_oob(tele.y, tr_y, bl_y, vy);
-        vz = inverse_v_when_oob(tele.z, tr_z, bl_z, vz);
-        commander
-            .setpoint_velocity_world(vx.0, vy.0, vz.0, 0.0)
-            .await?;
-        ticks.tick().await;
-    }
-
-    // return to center
-    commander.notify_setpoint_stop(0).await?;
     // return to bl starting point
     high_level_commander
         .go_to(bl_x.0, bl_y.0, z_min.0, 0.0, 2.0, false, false, None)
         .await?;
     sleep(Duration::from_millis(2200)).await;
     Ok(())
+}
+
+fn billiard_steps(bx: BilliardParams) -> impl Fn(StepState<SpeedVec>) -> Step<SpeedVec> {
+    move |StepState {
+              telemetry,
+              time_elapsed,
+              command_state: current_speed,
+          }| {
+        if time_elapsed > bx.hold_for {
+            Step::Stop
+        } else {
+            let vx = inverse_v_when_oob(telemetry.x, bx.tr_x, bx.bl_x, current_speed.vx);
+            let vy = inverse_v_when_oob(telemetry.y, bx.tr_y, bx.bl_y, current_speed.vy);
+            let vz = inverse_v_when_oob(telemetry.z, bx.tr_z, bx.bl_z, current_speed.vz);
+            Step::Continue(
+                Setpoint::VelocityPoint {
+                    vx,
+                    vy,
+                    vz,
+                    yaw_rate: 0.0,
+                },
+                SpeedVec { vx, vy, vz },
+            )
+        }
+    }
 }

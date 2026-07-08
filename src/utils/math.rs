@@ -66,7 +66,7 @@ pub struct WaypointDist {
     pub dz: Meters,
     pub dist: Meters,
 }
-pub fn waypoint_deltas(w: Waypoint, x: Meters, y: Meters, z: Meters) -> WaypointDist {
+pub fn waypoint_deltas(w: &Waypoint, x: Meters, y: Meters, z: Meters) -> WaypointDist {
     let dx = w.x - x;
     let dy = w.y - y;
     let dz = w.z - z;
@@ -74,6 +74,7 @@ pub fn waypoint_deltas(w: Waypoint, x: Meters, y: Meters, z: Meters) -> Waypoint
     WaypointDist { dx, dy, dz, dist }
 }
 
+#[derive(Clone, Copy)]
 pub struct SpeedVec {
     pub vx: MetersPerSecond,
     pub vy: MetersPerSecond,

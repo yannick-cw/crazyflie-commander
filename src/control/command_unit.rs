@@ -181,5 +181,4 @@ pub trait CommandUnit {
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()>;
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
-    fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
 }

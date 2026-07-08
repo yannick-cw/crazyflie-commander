@@ -1,11 +1,12 @@
 use crate::control::command_unit::{Meters, Telemetry};
+use crate::control::low_level_engine::{Setpoint, Step, StepState, run_commander_steps};
 use crate::utils::errors::Res;
 use crate::utils::math::{OrbitPos, calc_orbit_points};
 use crazyflie_lib::subsystems::commander::Commander;
 use crazyflie_lib::subsystems::high_level_commander::HighLevelCommander;
 use std::time::Duration;
+use std::vec;
 use tokio::sync::watch;
-use tokio::time;
 use tokio::time::sleep;
 
 pub async fn run_orbit(
@@ -37,14 +38,25 @@ pub async fn run_orbit(
 
     let all_orbits = points.repeat(orbits);
 
-    let mut ticks = time::interval(Duration::from_millis(10));
-    for OrbitPos { x, y, yaw_degrees } in all_orbits {
-        commander
-            .setpoint_position(x.0, y.0, z.0, yaw_degrees)
-            .await?;
-        ticks.tick().await;
-    }
+    run_commander_steps(commander, &telemetry, all_orbits.into_iter(), orbit_steps(z)).await
+}
 
-    commander.notify_setpoint_stop(0).await?;
-    Ok(())
+fn orbit_steps(
+    z: Meters,
+) -> impl Fn(StepState<vec::IntoIter<OrbitPos>>) -> Step<vec::IntoIter<OrbitPos>> {
+    move |s| {
+        let mut orbits = s.command_state;
+        match orbits.next() {
+            None => Step::Stop,
+            Some(OrbitPos { x, y, yaw_degrees }) => Step::Continue(
+                Setpoint::PositionPoint {
+                    x,
+                    y,
+                    z,
+                    yaw_degrees,
+                },
+                orbits,
+            ),
+        }
+    }
 }
