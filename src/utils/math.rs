@@ -105,3 +105,40 @@ pub fn split_relative_speed_to_absolute(yaw: f32, speed: MetersPerSecond) -> Spe
         vz: MetersPerSecond(0.0),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::control::command_unit::Meters;
+    use crate::utils::math::{OrbitPos, calc_orbit_points};
+    use proptest::prelude::*;
+    use std::time::Duration;
+    use test_strategy::proptest;
+
+    prop_compose! { fn arb_meters()(m in -100.0f32..100.0) -> Meters { Meters(m) } }
+    prop_compose! { fn arb_positive_meters()(m in 0.1f32..100.0) -> Meters { Meters(m) } }
+    prop_compose! { fn arb_duration()(d in 100u64..10_000) -> Duration { Duration::from_millis(d) } }
+
+    #[proptest]
+    fn orbit_points_on_orbit(
+        #[strategy(arb_meters())] cx: Meters,
+        #[strategy(arb_meters())] cy: Meters,
+        #[strategy(arb_positive_meters())] r: Meters,
+        #[strategy(arb_duration())] d: Duration,
+    ) {
+        let positions = calc_orbit_points(d, cx, cy, r);
+        for OrbitPos { x, y, .. } in positions {
+            let dx = x.0 - cx.0;
+            let dy = y.0 - cy.0;
+            let orbit_dist = (dx.powi(2) + dy.powi(2)).sqrt();
+            let allowed_error = 1e-3 * r.0 + 1e-3;
+            prop_assert!(
+                orbit_dist - r.0.abs() <= allowed_error,
+                "point ({}, {}) orbit_dist {} != radius {}",
+                x.0,
+                y.0,
+                orbit_dist,
+                r.0
+            );
+        }
+    }
+}

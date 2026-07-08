@@ -4,4 +4,5 @@ curriculum.md
 target/
 .idea/
 .rust-rover/
+proptest-regressions/
 scala-rust-cheatsheet.md
