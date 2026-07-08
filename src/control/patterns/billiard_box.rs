@@ -1,5 +1,6 @@
 use crate::control::command_unit::{BilliardParams, Meters, Telemetry};
 use crate::utils::errors::Res;
+use crate::utils::math::inverse_v_when_oob;
 use crazyflie_lib::subsystems::commander::Commander;
 use crazyflie_lib::subsystems::high_level_commander::HighLevelCommander;
 use std::time::{Duration, Instant};
@@ -48,26 +49,18 @@ pub async fn run_billiard_loop(
     sleep(Duration::from_millis(100)).await;
 
     let mut ticks = time::interval(Duration::from_millis(10));
-    let mut vx = vx.0;
-    let mut vy = vy.0;
-    let mut vz = vz.0;
-    let calc_new_velocity =
-        |estimated_pos: Meters, max_pos: Meters, min_pos: Meters, speed: f32| {
-            if estimated_pos > max_pos {
-                -speed.abs()
-            } else if estimated_pos < min_pos {
-                speed.abs()
-            } else {
-                speed
-            }
-        };
+    let mut vx = vx;
+    let mut vy = vy;
+    let mut vz = vz;
     while start_time + hold_for > Instant::now() {
         // deref immediately to not hold this and block
         let tele = *telemetry.borrow();
-        vx = calc_new_velocity(tele.x, tr_x, bl_x, vx);
-        vy = calc_new_velocity(tele.y, tr_y, bl_y, vy);
-        vz = calc_new_velocity(tele.z, tr_z, bl_z, vz);
-        commander.setpoint_velocity_world(vx, vy, vz, 0.0).await?;
+        vx = inverse_v_when_oob(tele.x, tr_x, bl_x, vx);
+        vy = inverse_v_when_oob(tele.y, tr_y, bl_y, vy);
+        vz = inverse_v_when_oob(tele.z, tr_z, bl_z, vz);
+        commander
+            .setpoint_velocity_world(vx.0, vy.0, vz.0, 0.0)
+            .await?;
         ticks.tick().await;
     }
 
