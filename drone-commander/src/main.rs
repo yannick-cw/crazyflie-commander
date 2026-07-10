@@ -2,22 +2,25 @@ use crate::event::{EventHandler, Message};
 use crate::model::Model;
 use crate::tui::Tui;
 use crate::update::update;
-use drone_control::{CommandUnit, setup_link};
+use drone_control::Telemetry;
 use ratatui::prelude::*;
 use std::io::stderr;
+use tokio::sync::watch;
 
 pub mod event;
+pub mod flight_view;
+pub mod home_view;
 pub mod model;
 pub mod tui;
 pub mod update;
-pub mod view;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     // selection process
-    let command_unit = setup_link().await?;
-    let receiver = command_unit.latest_telemetry();
+    // let command_unit = setup_link().await?;
+    // let receiver = command_unit.latest_telemetry();
 
+    let (_tx, receiver) = watch::channel(Telemetry::default());
     color_eyre::install()?;
 
     let backend = CrosstermBackend::new(stderr());
@@ -35,7 +38,7 @@ async fn main() -> color_eyre::Result<()> {
         model = process_messages(model, next_msg);
 
         // Render the user interface.
-        tui.draw(&mut model)?;
+        tui.draw(&model)?;
     }
 
     // Exit the user interface.

@@ -1,5 +1,5 @@
-use crate::model::Model;
-use crate::view;
+use crate::model::{HomeState, Model, State};
+use crate::{flight_view, home_view};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
 use std::{io, panic};
@@ -63,8 +63,16 @@ impl Tui {
     ///
     /// [`Draw`]: tui::Terminal::draw
     /// [`rendering`]: crate::ui:render
-    pub fn draw(&mut self, app: &mut Model) -> color_eyre::Result<()> {
-        self.terminal.draw(|frame| view::view(app, frame))?;
+    pub fn draw(&mut self, app: &Model) -> color_eyre::Result<()> {
+        self.terminal.draw(|frame| match &app.state {
+            State::Home(state) => match state {
+                HomeState::Overview(mode_selection) => home_view::view(mode_selection, frame),
+                HomeState::MissionSelect(_) => {}
+                HomeState::MissionPlan() => {}
+                HomeState::FreeFlight() => flight_view::view(app, frame),
+            },
+            State::MissionExecution(_) => {}
+        })?;
         Ok(())
     }
 }

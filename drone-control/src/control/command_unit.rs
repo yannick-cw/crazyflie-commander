@@ -49,13 +49,13 @@ pub struct Waypoint {
     pub z: Meters,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum FlightMode {
     Strafe,
     BodyFrame,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Command {
     Takeoff {
         height: Meters,

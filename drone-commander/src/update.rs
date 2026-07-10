@@ -1,7 +1,8 @@
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
-use crate::model::Model;
 use crate::event::Message;
+use crate::model::HomeState::Overview;
+use crate::model::{Model, State};
 
 pub fn update(model: &Model, msg: Message) -> (Model, Option<Message>) {
     let mut model: Model = model.clone();
@@ -17,21 +18,27 @@ pub fn update(model: &Model, msg: Message) -> (Model, Option<Message>) {
             {
                 (model, Some(Message::Quit))
             }
-            KeyCode::Right | KeyCode::Char('j') => (model, Some(Message::Increment)),
-            KeyCode::Left | KeyCode::Char('k') => (model, Some(Message::Decrement)),
+            KeyCode::Char('j') | KeyCode::Down => (model, Some(Message::Down)),
+            KeyCode::Char('k') | KeyCode::Up => (model, Some(Message::Up)),
             _ => (model, None),
         },
-        Message::Increment => {
-            model.counter -= 1;
-            (model, None)
-        }
-        Message::Decrement => {
-            model.counter += 1;
-            (model, None)
-        }
         Message::Quit => {
             model.exit = true;
             (model, None)
         }
+        other_msg => match model.state {
+            State::Home(Overview(current_selection)) => match other_msg {
+                Message::Up => {
+                    model.state = State::Home(Overview(current_selection.prev()));
+                    (model, None)
+                }
+                Message::Down => {
+                    model.state = State::Home(Overview(current_selection.next()));
+                    (model, None)
+                }
+                _ => (model, None),
+            },
+            _ => (model, None),
+        },
     }
 }

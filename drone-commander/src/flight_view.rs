@@ -14,7 +14,7 @@ use theme::*;
 
 /// Semantic palette. Swap these to restyle the whole screen in one place.
 /// Named ANSI colours adapt to the terminal's own theme; use `Color::Rgb`/tailwind for a fixed look.
-mod theme {
+pub mod theme {
     use ratatui::style::Color;
 
     pub const BRAND: Color = Color::Cyan; // shell border + title accent
@@ -22,6 +22,8 @@ mod theme {
     pub const TITLE: Color = Color::Gray; // panel titles
     pub const LABEL: Color = Color::DarkGray; // metric labels / dim text
     pub const CHIP_FG: Color = Color::Black; // text on a coloured chip
+
+    pub const SELECTED: Color = Color::LightGreen;
 
     pub const POSITION: Color = Color::Cyan;
     pub const VELOCITY: Color = Color::Green;
@@ -76,7 +78,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
     frame.render_widget(speed_gauge(t), speed_area);
 }
 
-fn shell() -> Block<'static> {
+pub fn shell() -> Block<'static> {
     Block::bordered()
         .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(BRAND))
@@ -192,7 +194,7 @@ fn panel(title: impl Into<String>) -> Block<'static> {
         ))
 }
 
-fn accent(s: &str) -> Span<'static> {
+pub fn accent(s: &str) -> Span<'static> {
     Span::styled(
         s.to_string(),
         Style::new().fg(BRAND).add_modifier(Modifier::BOLD),

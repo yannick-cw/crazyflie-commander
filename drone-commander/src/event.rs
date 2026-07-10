@@ -15,9 +15,9 @@ pub enum Message {
     Tick(Telemetry),
     /// Key press.
     Key(KeyEvent),
-    Increment,
-    Decrement,
     Quit,
+    Up,
+    Down,
 }
 
 /// Terminal event handler.
