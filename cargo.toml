@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "drone-commander",
+    "drone-control",
+]
+resolver = "3"

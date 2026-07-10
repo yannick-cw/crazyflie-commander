@@ -1,34 +1,26 @@
-use crate::control::command_unit::{Abort, Command, CommandUnit, Meters};
-use crate::control::crazyflie::setup_link;
-use crate::utils::errors::MissionError::RenderFailure;
-use crate::utils::errors::Res;
-use crate::utils::flight_paths::orbit;
-use crate::utils::render::{PathTrace, render_telemetry};
 use crossterm::event::{Event, EventStream, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use futures::{FutureExt, StreamExt};
+use drone_control::errors::Res;
+use drone_control::flight_paths::orbit;
+use drone_control::{Abort, Command, CommandUnit, setup_link};
+use futures::StreamExt;
 use std::future;
-use std::future::pending;
-use std::time::Duration;
-
-pub mod control;
-pub mod utils;
 
 #[tokio::main]
 async fn main() -> Res<()> {
     let real_unit = setup_link().await?;
 
-    let mut receiver_telemetry = real_unit.telemetry();
-    let render_loop = async {
-        let mut trace = PathTrace::new();
-        while let Ok(tele) = receiver_telemetry.recv().await {
-            render_telemetry(&tele, &mut trace);
-        }
-    };
-    let forever_render = render_loop.then(|_| pending());
+    // let mut receiver_telemetry = real_unit.telemetry();
+    // let render_loop = async {
+    //     let mut trace = PathTrace::new();
+    //     while let Ok(tele) = receiver_telemetry.recv().await {
+    //         render_telemetry(&tele, &mut trace);
+    //     }
+    // };
+    // let forever_render = render_loop.then(|_| pending());
     let mission = run_mission(orbit(), &real_unit);
 
-    tokio::select! { res =  mission=> res, _ = forever_render  => Err(RenderFailure)}
+    mission.await
 }
 
 async fn run_mission(mission: Vec<Command>, command_unit: &impl CommandUnit) -> Res<()> {

@@ -28,7 +28,10 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ rustPackage ];
+        packages = [
+          rustPackage
+          pkgs.cargo-generate
+        ];
         shellHook = ''
           mkdir -p "$PWD/.rust-rover"
           ln -sfn ${rustPackage} "$PWD/.rust-rover/toolchain"
