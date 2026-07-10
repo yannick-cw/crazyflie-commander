@@ -1,24 +1,49 @@
-use ratatui::{DefaultTerminal, Frame};
-use drone_control::setup_link;
+use crate::app::App;
+use crate::event::{Event, EventHandler};
+use crate::tui::Tui;
+use crate::update::update;
+use ratatui::prelude::*;
+use std::io::stderr;
+
+pub mod app;
+pub mod event;
+pub mod tui;
+pub mod ui;
+pub mod update;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
-    let real_unit = setup_link().await?;
+    // let real_unit = setup_link().await?;
 
     color_eyre::install()?;
-    ratatui::run(app)?;
+
+    let mut app = App::default();
+    let event_handler = EventHandler::new(250);
+    let backend = CrosstermBackend::new(stderr());
+    let terminal = ratatui::Terminal::new(backend)?;
+    let mut tui = Tui::new(terminal, event_handler);
+    tui.enter()?;
+
+    // Start the main loop.
+    while !app.exit {
+        // Render the user interface.
+        tui.draw(&mut app)?;
+        // Handle events.
+        match tui.events.next()? {
+            Event::Tick => {}
+            Event::Key(key_event) => update(&mut app, key_event),
+            Event::Mouse(_) => {}
+            Event::Resize(_, _) => {}
+        };
+    }
+
+    // Exit the user interface.
+    tui.exit()?;
     Ok(())
 }
 
-fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
-    loop {
-        terminal.draw(render)?;
-        if crossterm::event::read()?.is_key_press() {
-            break Ok(());
-        }
-    }
-}
-
-fn render(frame: &mut Frame) {
-    frame.render_widget("hello world", frame.area());
-}
+// TODO:
+// 1. mission select and run
+// 2. basic telemetry data live
+// 3. mission abort shortcuts + buttons (exit: x)
+// 4. render position in x y z
