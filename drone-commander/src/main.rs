@@ -1,5 +1,5 @@
-use crate::app::App;
-use crate::event::{Event, EventHandler};
+use crate::app::Model;
+use crate::event::{EventHandler, Message};
 use crate::tui::Tui;
 use crate::update::update;
 use ratatui::prelude::*;
@@ -17,7 +17,7 @@ async fn main() -> color_eyre::Result<()> {
 
     color_eyre::install()?;
 
-    let mut app = App::default();
+    let mut model = Model::default();
     let event_handler = EventHandler::new(250);
     let backend = CrosstermBackend::new(stderr());
     let terminal = ratatui::Terminal::new(backend)?;
@@ -25,20 +25,27 @@ async fn main() -> color_eyre::Result<()> {
     tui.enter()?;
 
     // Start the main loop.
-    while !app.exit {
+    while !model.exit {
         // Handle events.
-        match tui.events.next().await? {
-            Event::Tick => {}
-            Event::Key(key_event) => update(&mut app, key_event),
-        };
+        let next_msg = tui.events.next().await?;
+
+        model = process_messages(model, next_msg);
 
         // Render the user interface.
-        tui.draw(&mut app)?;
+        tui.draw(&mut model)?;
     }
 
     // Exit the user interface.
     tui.exit()?;
     Ok(())
+}
+
+fn process_messages(model: Model, msg: Message) -> Model {
+    let (model, next) = update(&model, msg); // shadow, not mut
+    match next {
+        Some(m) => process_messages(model, m),
+        None => model,
+    }
 }
 
 // TODO:

@@ -8,25 +8,27 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::{select, spawn, time};
 
-/// Terminal events.
-#[derive(Clone, Copy, Debug)]
-pub enum Event {
+#[derive(Clone, PartialEq, Copy, Debug)]
+pub enum Message {
     /// Terminal tick.
     Tick,
     /// Key press.
     Key(KeyEvent),
+    Increment,
+    Decrement,
+    Quit,
 }
 
 /// Terminal event handler.
 #[derive(Debug)]
 pub struct EventHandler {
-    receiver: UnboundedReceiver<Event>,
+    receiver: UnboundedReceiver<Message>,
 }
 
-fn handle_crossterm(evt: Option<io::Result<CrosstermEvent>>, sender: &UnboundedSender<Event>) {
+fn handle_crossterm(evt: Option<io::Result<CrosstermEvent>>, sender: &UnboundedSender<Message>) {
     if let Some(Ok(CrosstermEvent::Key(e))) = evt {
         if e.kind == KeyEventKind::Press {
-            let _ = sender.send(Event::Key(e));
+            let _ = sender.send(Message::Key(e));
         }
     }
 }
@@ -47,7 +49,7 @@ impl EventHandler {
                 // either an event is fired or we tick forward after tick rate
                 select! {
                     maybe_evt = next_evt => handle_crossterm(maybe_evt, &sender),
-                    _ = delay          => { let _ = sender.send(Event::Tick); },
+                    _ = delay          => { let _ = sender.send(Message::Tick); },
                 }
             }
         });
@@ -58,7 +60,7 @@ impl EventHandler {
     ///
     /// This function will always block the current thread if
     /// there is no data available and it's possible for more data to be sent.
-    pub async fn next(&mut self) -> Result<Event> {
+    pub async fn next(&mut self) -> Result<Message> {
         self.receiver
             .recv()
             .await
