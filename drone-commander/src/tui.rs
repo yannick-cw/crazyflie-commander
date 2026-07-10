@@ -1,7 +1,5 @@
-use crate::app::Model;
-use crate::event::EventHandler;
-use crate::ui;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crate::model::Model;
+use crate::view;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
 use std::{io, panic};
@@ -15,13 +13,11 @@ pub type CrosstermTerminal = ratatui::Terminal<ratatui::backend::CrosstermBacken
 pub struct Tui {
     /// Interface to the Terminal.
     terminal: CrosstermTerminal,
-    /// Terminal event handler.
-    pub events: EventHandler,
 }
 impl Tui {
     /// Constructs a new instance of [`Tui`].
-    pub fn new(terminal: CrosstermTerminal, events: EventHandler) -> Self {
-        Self { terminal, events }
+    pub fn new(terminal: CrosstermTerminal) -> Self {
+        Self { terminal }
     }
 
     /// Initializes the terminal interface.
@@ -29,7 +25,7 @@ impl Tui {
     /// It enables the raw mode and sets terminal properties.
     pub fn enter(&mut self) -> color_eyre::Result<()> {
         terminal::enable_raw_mode()?;
-        execute!(io::stderr(), EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(io::stderr(), EnterAlternateScreen)?;
 
         // Define a custom panic hook to reset the terminal properties.
         // This way, you won't have your terminal messed up if an unexpected error happens.
@@ -50,7 +46,7 @@ impl Tui {
     /// the terminal properties if unexpected errors occur.
     fn reset() -> color_eyre::Result<()> {
         terminal::disable_raw_mode()?;
-        execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture)?;
+        execute!(io::stderr(), LeaveAlternateScreen)?;
         Ok(())
     }
 
@@ -68,7 +64,7 @@ impl Tui {
     /// [`Draw`]: tui::Terminal::draw
     /// [`rendering`]: crate::ui:render
     pub fn draw(&mut self, app: &mut Model) -> color_eyre::Result<()> {
-        self.terminal.draw(|frame| ui::view(app, frame))?;
+        self.terminal.draw(|frame| view::view(app, frame))?;
         Ok(())
     }
 }

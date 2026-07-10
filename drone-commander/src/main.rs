@@ -1,33 +1,36 @@
-use crate::app::Model;
 use crate::event::{EventHandler, Message};
+use crate::model::Model;
 use crate::tui::Tui;
 use crate::update::update;
+use drone_control::{CommandUnit, setup_link};
 use ratatui::prelude::*;
 use std::io::stderr;
 
-pub mod app;
 pub mod event;
+pub mod model;
 pub mod tui;
-pub mod ui;
 pub mod update;
+pub mod view;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
-    // let real_unit = setup_link().await?;
+    // selection process
+    let command_unit = setup_link().await?;
+    let receiver = command_unit.latest_telemetry();
 
     color_eyre::install()?;
 
-    let mut model = Model::default();
-    let event_handler = EventHandler::new(250);
     let backend = CrosstermBackend::new(stderr());
-    let terminal = ratatui::Terminal::new(backend)?;
-    let mut tui = Tui::new(terminal, event_handler);
+    let terminal = Terminal::new(backend)?;
+    let mut tui = Tui::new(terminal);
     tui.enter()?;
+    let mut model = Model::default();
+    let mut event_handler = EventHandler::new(250, receiver);
 
     // Start the main loop.
     while !model.exit {
         // Handle events.
-        let next_msg = tui.events.next().await?;
+        let next_msg = event_handler.next().await?;
 
         model = process_messages(model, next_msg);
 
@@ -49,7 +52,8 @@ fn process_messages(model: Model, msg: Message) -> Model {
 }
 
 // TODO:
-// 1. mission select and run
-// 2. basic telemetry data live
+// 1. basic telemetry data live
+// 2. first screen: a select mission b plan mission c free flight
 // 3. mission abort shortcuts + buttons (exit: x)
 // 4. render position in x y z
+// 5. "connection lost"

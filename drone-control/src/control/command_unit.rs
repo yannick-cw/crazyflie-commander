@@ -5,7 +5,7 @@ use crazyflie_lib::subsystems::log::LogData;
 use derive_more::{Add, Div, Mul, Sub};
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Abort {
@@ -181,4 +181,5 @@ pub trait CommandUnit {
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()>;
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
+    fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
 }

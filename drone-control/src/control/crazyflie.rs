@@ -68,12 +68,14 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     Ok(CrazyflieCommandUnit {
         autopilot: Vehicle::new(cf, watch_tx.subscribe()),
         telemetry_sender: tx,
+        telemetry_latest: watch_tx,
     })
 }
 
 pub struct CrazyflieCommandUnit {
     autopilot: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,
+    telemetry_latest: watch::Sender<Telemetry>,
 }
 
 impl CrazyflieCommandUnit {
@@ -159,5 +161,9 @@ impl CommandUnit for CrazyflieCommandUnit {
 
     fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
         self.telemetry_sender.subscribe()
+    }
+
+    fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
+        self.telemetry_latest.subscribe()
     }
 }

@@ -1,17 +1,18 @@
 use color_eyre::Result;
 use crossterm::event::KeyEventKind;
+use drone_control::Telemetry;
 use futures::StreamExt;
 use ratatui::crossterm::event::{self, Event as CrosstermEvent, KeyEvent};
 use std::io;
 use std::time::Duration;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{mpsc, watch};
 use tokio::{select, spawn, time};
 
 #[derive(Clone, PartialEq, Copy, Debug)]
 pub enum Message {
     /// Terminal tick.
-    Tick,
+    Tick(Telemetry),
     /// Key press.
     Key(KeyEvent),
     Increment,
@@ -35,7 +36,7 @@ fn handle_crossterm(evt: Option<io::Result<CrosstermEvent>>, sender: &UnboundedS
 
 impl EventHandler {
     // Constructs a new instance of [`EventHandler`].
-    pub fn new(tick_rate: u64) -> Self {
+    pub fn new(tick_rate: u64, telemetry: watch::Receiver<Telemetry>) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
 
         spawn(async move {
@@ -49,7 +50,10 @@ impl EventHandler {
                 // either an event is fired or we tick forward after tick rate
                 select! {
                     maybe_evt = next_evt => handle_crossterm(maybe_evt, &sender),
-                    _ = delay          => { let _ = sender.send(Message::Tick); },
+                    _ = delay          => {
+                        let tele = *telemetry.borrow();
+                        sender.send(Message::Tick(tele)).unwrap();
+                    },
                 }
             }
         });

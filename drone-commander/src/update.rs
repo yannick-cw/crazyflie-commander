@@ -1,12 +1,15 @@
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 
-use crate::app::Model;
+use crate::model::Model;
 use crate::event::Message;
 
 pub fn update(model: &Model, msg: Message) -> (Model, Option<Message>) {
     let mut model: Model = model.clone();
     match msg {
-        Message::Tick => (model, None),
+        Message::Tick(tele) => {
+            model.telemetry = tele;
+            (model, None)
+        }
         Message::Key(key_event) => match key_event.code {
             KeyCode::Esc | KeyCode::Char('q') => (model, Some(Message::Quit)),
             KeyCode::Char('c') | KeyCode::Char('C')
