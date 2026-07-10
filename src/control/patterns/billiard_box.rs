@@ -1,12 +1,12 @@
 use crate::control::command_unit::{BilliardParams, Meters};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
-use crate::control::vehicle::Autopilot;
+use crate::control::vehicle::Vehicle;
 use crate::utils::errors::Res;
 use crate::utils::math::{SpeedVec, inverse_v_when_oob};
 use std::time::Duration;
 use tokio::time::sleep;
 
-pub async fn run_billiard_loop(billiard_params: BilliardParams, vehicle: &Autopilot) -> Res<()> {
+pub async fn run_billiard_loop(billiard_params: BilliardParams, vehicle: &Vehicle) -> Res<()> {
     let BilliardParams {
         bl_x,
         bl_y,

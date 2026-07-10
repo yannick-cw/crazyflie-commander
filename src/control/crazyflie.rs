@@ -2,7 +2,7 @@ use crate::control::command_unit::{Abort, Command, CommandUnit, Telemetry};
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::smooth_path::run_smooth_path;
-use crate::control::vehicle::Autopilot;
+use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
@@ -66,13 +66,13 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
         }
     });
     Ok(CrazyflieCommandUnit {
-        autopilot: Autopilot::new(cf, watch_tx.subscribe()),
+        autopilot: Vehicle::new(cf, watch_tx.subscribe()),
         telemetry_sender: tx,
     })
 }
 
 pub struct CrazyflieCommandUnit {
-    autopilot: Autopilot,
+    autopilot: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,
 }
 

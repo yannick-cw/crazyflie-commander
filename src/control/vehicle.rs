@@ -7,16 +7,18 @@ use tokio::sync::watch;
 use tokio::time;
 use tokio::time::{Instant, sleep};
 
-pub struct Autopilot {
+pub struct Vehicle {
     cf: Crazyflie,
     pub telemetry: watch::Receiver<Telemetry>,
 }
 
-impl Autopilot {
+impl Vehicle {
     pub fn new(cf: Crazyflie, telemetry: watch::Receiver<Telemetry>) -> Self {
         Self { cf, telemetry }
     }
-
+    pub fn latest_telemetry(&self) -> Telemetry {
+        *self.telemetry.borrow()
+    }
     pub async fn reset_estimator(&self) -> Res<()> {
         // Reset the x,y,z,yaw estimated values before a new flight
         self.cf
@@ -32,6 +34,7 @@ impl Autopilot {
     }
 
     pub async fn take_off(&self, height: Meters, duration: Duration) -> Res<()> {
+        println!("take off");
         self.cf
             .high_level_commander
             .take_off(height.0, None, duration.as_secs_f32(), None)
@@ -49,6 +52,7 @@ impl Autopilot {
         relative: bool,
         linear: bool,
     ) -> Res<()> {
+        println!("go to {x}x {y}y {z}z");
         self.cf
             .high_level_commander
             .go_to(
@@ -66,6 +70,7 @@ impl Autopilot {
     }
 
     pub async fn land(&self, duration: Duration) -> Res<()> {
+        println!("land in place");
         self.cf
             .high_level_commander
             .land(0.0, None, duration.as_secs_f32(), None)
@@ -74,6 +79,7 @@ impl Autopilot {
     }
 
     pub async fn send_setpoint(&self, setpoint: Setpoint) -> Res<()> {
+        // println!("sending setpoint {setpoint:?}");
         match setpoint {
             Setpoint::VelocityPoint {
                 vx,
@@ -102,18 +108,21 @@ impl Autopilot {
     }
 
     pub async fn notify_setpoint_stop(&self) -> Res<()> {
+        println!("setpoint stop - low level commander out.");
         self.cf.commander.notify_setpoint_stop(0).await?;
         Ok(())
     }
 
     pub async fn emergency_stop(&self) -> Res<()> {
+        println!("emergency stop!");
         self.cf.localization.emergency.send_emergency_stop().await?;
         sleep(Duration::from_secs(1)).await;
         Ok(())
     }
 
     pub async fn return_home(&self) -> Res<()> {
-        self.cf.commander.notify_setpoint_stop(0).await?;
+        println!("returning home!");
+        self.notify_setpoint_stop().await?;
         self.go_to(
             Meters(0.0),
             Meters(0.0),
@@ -139,7 +148,7 @@ impl Autopilot {
         let mut ticks = time::interval(Duration::from_millis(10));
 
         while let Step::Continue(setpoint, next_cmd_state) = next_step(StepState {
-            telemetry: *(&self.telemetry).borrow(),
+            telemetry: self.latest_telemetry(),
             time_elapsed: Instant::now() - start_time,
             command_state,
         }) {
@@ -149,7 +158,7 @@ impl Autopilot {
         }
 
         // stop low level commander
-        (&self.cf.commander).notify_setpoint_stop(0).await?;
+        self.notify_setpoint_stop().await?;
 
         Ok(())
     }

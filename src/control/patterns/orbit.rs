@@ -1,6 +1,6 @@
 use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
-use crate::control::vehicle::Autopilot;
+use crate::control::vehicle::Vehicle;
 use crate::utils::errors::Res;
 use crate::utils::math::{OrbitPos, calc_orbit_points};
 use std::time::Duration;
@@ -11,9 +11,9 @@ pub async fn run_orbit(
     orbital_period: Duration,
     orbits: usize,
     z: Meters,
-    vehicle: &Autopilot,
+    vehicle: &Vehicle,
 ) -> Res<()> {
-    let Telemetry { x, y, .. } = *vehicle.telemetry.borrow();
+    let Telemetry { x, y, .. } = vehicle.latest_telemetry();
     // move onto the orbit
     vehicle
         .go_to(
@@ -26,6 +26,7 @@ pub async fn run_orbit(
             true,
         )
         .await?;
+    println!("Moved to orbit..");
 
     let points = calc_orbit_points(orbital_period, x, y, radius);
     let all_orbits = points.repeat(orbits);

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use tokio::time;
 
+#[derive(Debug)]
 pub enum Setpoint {
     VelocityPoint {
         vx: MetersPerSecond,

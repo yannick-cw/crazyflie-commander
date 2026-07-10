@@ -1,6 +1,6 @@
 use crate::control::command_unit::{FlightMode, Meters, MetersPerSecond, Telemetry, Waypoint};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
-use crate::control::vehicle::Autopilot;
+use crate::control::vehicle::Vehicle;
 use crate::utils::errors::Res;
 use crate::utils::math::{
     SpeedVec, WaypointDist, calc_axis_speed, calc_yaw_rate, split_relative_speed_to_absolute,
@@ -9,7 +9,7 @@ use crate::utils::math::{
 
 pub async fn run_smooth_path(
     path: Vec<Waypoint>,
-    vehicle: &Autopilot,
+    vehicle: &Vehicle,
     speed: MetersPerSecond,
     flight_mode: FlightMode,
 ) -> Res<()> {
