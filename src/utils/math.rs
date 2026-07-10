@@ -108,14 +108,15 @@ pub fn split_relative_speed_to_absolute(yaw: f32, speed: MetersPerSecond) -> Spe
 
 #[cfg(test)]
 mod tests {
-    use crate::control::command_unit::Meters;
-    use crate::utils::math::{OrbitPos, calc_orbit_points};
+    use crate::control::command_unit::{Meters, MetersPerSecond};
+    use crate::utils::math::{OrbitPos, calc_orbit_points, inverse_v_when_oob};
     use proptest::prelude::*;
     use std::time::Duration;
     use test_strategy::proptest;
 
     prop_compose! { fn arb_meters()(m in -100.0f32..100.0) -> Meters { Meters(m) } }
-    prop_compose! { fn arb_positive_meters()(m in 0.1f32..100.0) -> Meters { Meters(m) } }
+    prop_compose! { fn arb_m_per_s()(m in -100.0f32..100.0) -> MetersPerSecond { MetersPerSecond(m) } }
+    prop_compose! { fn arb_positive_meters()(m in 1.1f32..100.0) -> Meters { Meters(m) } }
     prop_compose! { fn arb_duration()(d in 100u64..10_000) -> Duration { Duration::from_millis(d) } }
 
     #[proptest]
@@ -140,5 +141,19 @@ mod tests {
                 r.0
             );
         }
+    }
+
+    #[proptest]
+    fn accelerate_towards_inbounds(
+        #[strategy(arb_meters())] max_pos: Meters,
+        #[strategy(arb_positive_meters())] to_min_pos: Meters,
+        #[strategy(arb_m_per_s())] speed: MetersPerSecond,
+        #[strategy(arb_positive_meters())] oob: Meters,
+    ) {
+        let min_pos = max_pos - to_min_pos;
+        let over_max = inverse_v_when_oob(max_pos + oob, max_pos, min_pos, speed);
+        let under_min = inverse_v_when_oob(min_pos - oob, max_pos, min_pos, speed);
+        prop_assert!(over_max.0.signum() == -1.0);
+        prop_assert!(under_min.0.signum() == 1.0)
     }
 }
