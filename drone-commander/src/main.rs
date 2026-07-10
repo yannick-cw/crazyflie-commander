@@ -26,15 +26,14 @@ async fn main() -> color_eyre::Result<()> {
 
     // Start the main loop.
     while !app.exit {
-        // Render the user interface.
-        tui.draw(&mut app)?;
         // Handle events.
-        match tui.events.next()? {
+        match tui.events.next().await? {
             Event::Tick => {}
             Event::Key(key_event) => update(&mut app, key_event),
-            Event::Mouse(_) => {}
-            Event::Resize(_, _) => {}
         };
+
+        // Render the user interface.
+        tui.draw(&mut app)?;
     }
 
     // Exit the user interface.

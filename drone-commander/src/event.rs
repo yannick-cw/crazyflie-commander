@@ -1,10 +1,12 @@
 use color_eyre::Result;
-use ratatui::crossterm::event::{self, Event as CrosstermEvent, KeyEvent, MouseEvent};
-use std::{
-    sync::mpsc,
-    thread,
-    time::{Duration, Instant},
-};
+use crossterm::event::KeyEventKind;
+use futures::StreamExt;
+use ratatui::crossterm::event::{self, Event as CrosstermEvent, KeyEvent};
+use std::io;
+use std::time::Duration;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::{select, spawn, time};
 
 /// Terminal events.
 #[derive(Clone, Copy, Debug)]
@@ -13,76 +15,53 @@ pub enum Event {
     Tick,
     /// Key press.
     Key(KeyEvent),
-    /// Mouse click/scroll.
-    Mouse(MouseEvent),
-    /// Terminal resize.
-    Resize(u16, u16),
 }
 
 /// Terminal event handler.
 #[derive(Debug)]
 pub struct EventHandler {
-    /// Event sender channel.
-    #[allow(dead_code)]
-    sender: mpsc::Sender<Event>,
-    /// Event receiver channel.
-    receiver: mpsc::Receiver<Event>,
-    /// Event handler thread.
-    #[allow(dead_code)]
-    handler: thread::JoinHandle<()>,
+    receiver: UnboundedReceiver<Event>,
 }
 
-// -- snip --
+fn handle_crossterm(evt: Option<io::Result<CrosstermEvent>>, sender: &UnboundedSender<Event>) {
+    if let Some(Ok(CrosstermEvent::Key(e))) = evt {
+        if e.kind == KeyEventKind::Press {
+            let _ = sender.send(Event::Key(e));
+        }
+    }
+}
 
 impl EventHandler {
-    /// Constructs a new instance of [`EventHandler`].
+    // Constructs a new instance of [`EventHandler`].
     pub fn new(tick_rate: u64) -> Self {
-        let tick_rate = Duration::from_millis(tick_rate);
-        let (sender, receiver) = mpsc::channel();
-        let handler = {
-            let sender = sender.clone();
-            thread::spawn(move || {
-                let mut last_tick = Instant::now();
-                loop {
-                    let timeout = tick_rate
-                        .checked_sub(last_tick.elapsed())
-                        .unwrap_or(tick_rate);
+        let (sender, receiver) = mpsc::unbounded_channel();
 
-                    if event::poll(timeout).expect("unable to poll for event") {
-                        match event::read().expect("unable to read event") {
-                            CrosstermEvent::Key(e) => {
-                                if e.kind == event::KeyEventKind::Press {
-                                    sender.send(Event::Key(e))
-                                } else {
-                                    Ok(()) // ignore KeyEventKind::Release on windows
-                                }
-                            }
-                            CrosstermEvent::Mouse(e) => sender.send(Event::Mouse(e)),
-                            CrosstermEvent::Resize(w, h) => sender.send(Event::Resize(w, h)),
-                            _ => unimplemented!(),
-                        }
-                        .expect("failed to send terminal event")
-                    }
+        spawn(async move {
+            let mut ticks = time::interval(Duration::from_millis(tick_rate));
+            let mut event_stream = event::EventStream::new();
 
-                    if last_tick.elapsed() >= tick_rate {
-                        sender.send(Event::Tick).expect("failed to send tick event");
-                        last_tick = Instant::now();
-                    }
+            loop {
+                let delay = ticks.tick();
+                let next_evt = event_stream.next();
+
+                // either an event is fired or we tick forward after tick rate
+                select! {
+                    maybe_evt = next_evt => handle_crossterm(maybe_evt, &sender),
+                    _ = delay          => { let _ = sender.send(Event::Tick); },
                 }
-            })
-        };
-        Self {
-            sender,
-            receiver,
-            handler,
-        }
+            }
+        });
+        Self { receiver }
     }
 
     /// Receive the next event from the handler thread.
     ///
     /// This function will always block the current thread if
     /// there is no data available and it's possible for more data to be sent.
-    pub fn next(&self) -> Result<Event> {
-        Ok(self.receiver.recv()?)
+    pub async fn next(&mut self) -> Result<Event> {
+        self.receiver
+            .recv()
+            .await
+            .ok_or(color_eyre::eyre::eyre!("Unable to get event"))
     }
 }
