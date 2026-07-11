@@ -1,7 +1,6 @@
-use crate::model::{Model, State};
-use crate::{flight_view, home_view, mission_select_view};
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
+use ratatui::Frame;
 use std::{io, panic};
 
 pub type CrosstermTerminal = ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stderr>>;
@@ -59,18 +58,11 @@ impl Tui {
         Ok(())
     }
 
-    /// [`Draw`] the terminal interface by [`rendering`] the widgets.
-    ///
-    /// [`Draw`]: tui::Terminal::draw
-    /// [`rendering`]: crate::ui:render
-    pub fn draw(&mut self, app: &Model) -> color_eyre::Result<()> {
-        self.terminal.draw(|frame| match &app.state {
-            State::Home(s) => home_view::view(s, frame),
-            State::MissionExecution(_) => {}
-            State::MissionSelect(s) => mission_select_view::view(s, frame),
-            State::MissionPlan() => {}
-            State::FreeFlight() => flight_view::view(app, frame),
-        })?;
+    pub fn draw<Draw>(&mut self, draw: Draw) -> color_eyre::Result<()>
+    where
+        Draw: Fn(&mut Frame),
+    {
+        self.terminal.draw(draw)?;
         Ok(())
     }
 }

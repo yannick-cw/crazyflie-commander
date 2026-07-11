@@ -1,3 +1,4 @@
+use crate::model::MissionPlan;
 use color_eyre::Result;
 use crossterm::event::KeyEventKind;
 use drone_control::Telemetry;
@@ -9,15 +10,29 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::{mpsc, watch};
 use tokio::{select, spawn, time};
 
-#[derive(Clone, PartialEq, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Message {
     /// Terminal tick.
     Tick(Telemetry),
     /// Key press.
     Key(KeyEvent),
     Quit,
+    Home(NavigationMessage),
+    MissionSelect(MissionSelectMessage),
+    MissionExecution(),
+}
+
+#[derive(Clone, Debug)]
+pub enum MissionSelectMessage {
+    Nav(NavigationMessage),
+    Selected(MissionPlan),
+}
+
+#[derive(Clone, PartialEq, Copy, Debug)]
+pub enum NavigationMessage {
     Up,
     Down,
+    Select,
 }
 
 /// Terminal event handler.

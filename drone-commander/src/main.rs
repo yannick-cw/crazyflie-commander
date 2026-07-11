@@ -10,6 +10,7 @@ use tokio::sync::watch;
 pub mod event;
 pub mod flight_view;
 pub mod home_view;
+pub mod mission_select_view;
 pub mod model;
 pub mod tui;
 pub mod update;
@@ -47,7 +48,7 @@ async fn main() -> color_eyre::Result<()> {
 }
 
 fn process_messages(model: Model, msg: Message) -> Model {
-    let (model, next) = update(&model, msg); // shadow, not mut
+    let (model, next) = update(&model, msg);
     match next {
         Some(m) => process_messages(model, m),
         None => model,

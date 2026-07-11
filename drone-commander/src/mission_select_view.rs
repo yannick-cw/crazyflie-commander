@@ -1,6 +1,5 @@
 use crate::flight_view::{shell, theme};
-use crate::model::HomeState;
-use crate::model::ModeSelection::{FreeFlightItem, MissionPlanItem, MissionSelectItem};
+use crate::model::MissionSelectState;
 use ratatui::widgets::{List, ListItem};
 use ratatui::{
     Frame,
@@ -8,18 +7,19 @@ use ratatui::{
     text::{Line, Span},
 };
 
-pub fn view(model: &HomeState, frame: &mut Frame) {
+pub fn view(model: &MissionSelectState, frame: &mut Frame) {
     let area = frame.area();
 
     let shell = shell();
     let inner = shell.inner(area);
     frame.render_widget(shell, area);
 
-    let list_items = vec![
-        list_item("Select Mission", model.selected_mode == MissionSelectItem),
-        list_item("Plan Mission", model.selected_mode == MissionPlanItem),
-        list_item("Free Flight", model.selected_mode == FreeFlightItem),
-    ];
+    let list_items: Vec<ListItem> = model
+        .missions
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| list_item(name, i == model.selection))
+        .collect();
 
     let list = List::new(list_items);
 

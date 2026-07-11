@@ -1,5 +1,3 @@
-use crate::model::HomeState::Overview;
-use crate::model::ModeSelection::MissionSelectItem;
 use crate::model::State::Home;
 use drone_control::flight_paths::{
     body_frame_smooth, haus_nikolaus, lawn_mower, orbit, smooth_curves,
@@ -17,24 +15,32 @@ impl Default for Model {
         Model {
             telemetry: Default::default(),
             exit: false,
-            state: Home(Overview(MissionSelectItem)),
+            state: Home(HomeState {
+                selected_mode: ModeSelection::MissionSelectItem,
+            }),
         }
     }
 }
 #[derive(Debug, Clone)]
 pub enum State {
     Home(HomeState),
-    MissionExecution(Vec<Command>),
-}
-
-#[derive(Debug, Clone)]
-pub enum HomeState {
-    Overview(ModeSelection),
+    MissionExecution(MissionPlan),
     // this opens a selection view
     MissionSelect(MissionSelectState),
     MissionPlan(),
     // this will go to "current" observe only for now
     FreeFlight(),
+}
+
+#[derive(Clone, Debug)]
+pub struct MissionPlan {
+    pub mission: Vec<Command>,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct HomeState {
+    pub selected_mode: ModeSelection,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -63,20 +69,20 @@ impl ModeSelection {
 
 #[derive(Debug, Clone)]
 pub struct MissionSelectState {
-    _missions: Vec<(String, Vec<Command>)>,
-    _selection: i8,
+    pub missions: Vec<(String, Vec<Command>)>,
+    pub selection: usize,
 }
 impl Default for MissionSelectState {
     fn default() -> Self {
         MissionSelectState {
-            _missions: vec![
+            missions: vec![
                 ("nikolaus".to_string(), haus_nikolaus()),
                 ("orbit".to_string(), orbit()),
                 ("smooth".to_string(), smooth_curves()),
                 ("body smooth".to_string(), body_frame_smooth()),
                 ("lawn mower".to_string(), lawn_mower()),
             ],
-            _selection: 0,
+            selection: 0,
         }
     }
 }
