@@ -1,7 +1,7 @@
 use crate::Msg::TerminalEvt;
 use crossterm::event::{Event, KeyCode};
 use futures::{FutureExt, StreamExt};
-use ratatea::{Cmd, Command, Program, Sub, run};
+use ratatea::{Cmd, Program, Sub, run};
 use ratatui::Frame;
 use ratatui::layout::Alignment;
 use ratatui::widgets::{Block, BorderType};
@@ -44,8 +44,8 @@ enum Msg {
     TerminalEvt(Event),
 }
 
-fn lift_event(e: Event) -> Msg {
-    TerminalEvt(e)
+fn lift_event(e: Event) -> Option<Msg> {
+    Some(TerminalEvt(e))
 }
 
 fn init() -> (Model, Cmd<Msg>) {
@@ -54,7 +54,7 @@ fn init() -> (Model, Cmd<Msg>) {
             elapsed_time: Duration::default(),
             should_exit: false,
         },
-        Command::new(sleep(Duration::from_secs(3)).map(|_| Msg::Tick(Duration::from_secs(3)))),
+        Cmd::new(sleep(Duration::from_secs(3)).map(|_| Msg::Tick(Duration::from_secs(3)))),
     )
 }
 
@@ -65,16 +65,16 @@ fn update(msg: Msg, model: Model) -> (Model, Cmd<Msg>) {
                 elapsed_time: model.elapsed_time + elapsed,
                 ..model
             },
-            Command::none(),
+            Cmd::none(),
         ),
         TerminalEvt(Event::Key(k)) if k.code == KeyCode::Char('x') => (
             Model {
                 should_exit: true,
                 ..model
             },
-            Command::none(),
+            Cmd::none(),
         ),
-        _ => (model, Command::none()),
+        _ => (model, Cmd::none()),
     }
 }
 

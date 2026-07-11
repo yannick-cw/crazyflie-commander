@@ -1,58 +1,56 @@
-use crate::event::{EventHandler, Message};
-use crate::model::Model;
-use crate::tui::Tui;
-use crate::update::update;
+use crate::messages::Msg;
+use crate::model::{Model, State};
+use crate::update::update_all;
+use crossterm::event::Event;
 use drone_control::Telemetry;
+use futures::StreamExt;
+use ratatea::{Cmd, Program, Sub, run};
 use ratatui::prelude::*;
-use std::io::stderr;
 use tokio::sync::watch;
+use tokio_stream::wrappers::WatchStream;
 
-pub mod event;
 pub mod flight_view;
 pub mod home_view;
+pub mod messages;
 pub mod mission_select_view;
 pub mod model;
-pub mod tui;
 pub mod update;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     // selection process
     // let command_unit = setup_link().await?;
-    // let receiver = command_unit.latest_telemetry();
+    // let _receiver = command_unit.latest_telemetry();
 
     let (_tx, receiver) = watch::channel(Telemetry::default());
-    color_eyre::install()?;
 
-    let backend = CrosstermBackend::new(stderr());
-    let terminal = Terminal::new(backend)?;
-    let mut tui = Tui::new(terminal);
-    tui.enter()?;
-    let mut model = Model::default();
-    let mut event_handler = EventHandler::new(250, receiver);
+    let subscriptions: Sub<Msg> =
+        { vec![WatchStream::new(receiver).map(Msg::TelemetryUpdate).boxed()] };
 
-    // Start the main loop.
-    while !model.exit {
-        // Handle events.
-        let next_msg = event_handler.next().await?;
+    let p = Program {
+        init: || (Model::default(), Cmd::none()),
+        update: update_all,
+        view,
+        subscriptions,
+        lift_terminal_event: Some(|e| match e {
+            Event::Key(key) => Some(Msg::Key(key)),
+            _ => None,
+        }),
+        exit_condition: Some(|m| m.exit),
+    };
 
-        model = process_messages(model, next_msg);
-
-        // Render the user interface.
-        tui.draw(&model)?;
-    }
-
-    // Exit the user interface.
-    tui.exit()?;
+    run(p).await?;
     Ok(())
 }
 
-fn process_messages(model: Model, msg: Message) -> Model {
-    let (model, next) = update(&model, msg);
-    match next {
-        Some(m) => process_messages(model, m),
-        None => model,
-    }
+fn view(model: &Model, frame: &mut Frame) {
+    match &model.state {
+        State::Home(s) => home_view::view(s, frame),
+        State::MissionExecution(_) => {}
+        State::MissionSelect(s) => mission_select_view::view(s, frame),
+        State::MissionPlan() => {}
+        State::FreeFlight() => flight_view::view(model, frame),
+    };
 }
 
 // TODO:

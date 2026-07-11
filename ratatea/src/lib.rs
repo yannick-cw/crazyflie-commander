@@ -1,32 +1,60 @@
-use crate::tui::Tui;
 use crossterm::event::{Event, EventStream};
-use futures::StreamExt;
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, FuturesUnordered, select_all};
-use ratatui::backend::CrosstermBackend;
-use ratatui::{Frame, Terminal};
-use std::io::stderr;
+use futures::{FutureExt, StreamExt};
+use ratatui::Frame;
 use tokio::select;
 
-pub mod tui;
-
-pub type Cmd<Msg> = Vec<BoxFuture<'static, Msg>>;
+pub struct Cmd<Msg>(Vec<BoxFuture<'static, Msg>>);
 
 pub type Sub<Msg> = Vec<BoxStream<'static, Msg>>;
-pub struct Command;
-impl Command {
-    pub fn none<Msg>() -> Cmd<Msg> {
-        Vec::new()
+// todo ergonomics: Cmd:: would be nicer?
+impl<Msg: Send + 'static> Cmd<Msg> {
+    pub fn none() -> Cmd<Msg> {
+        Cmd(Vec::new())
     }
 
     // send to send across threads, 'static so future owns all data it brings, as it will live
     // longer than the calling scope
-    pub fn new<Msg>(cmd: impl Future<Output = Msg> + Send + 'static) -> Cmd<Msg> {
-        vec![Box::pin(cmd)]
+    pub fn new(cmd: impl Future<Output = Msg> + Send + 'static) -> Cmd<Msg> {
+        Cmd(vec![Box::pin(cmd)])
     }
 
-    pub fn batch<Msg>(cmds: Vec<impl Future<Output = Msg> + Send + 'static>) -> Cmd<Msg> {
+    pub fn pure(msg: Msg) -> Cmd<Msg> {
+        Self::new(async move { msg })
+    }
+
+    pub fn batch(cmds: Vec<impl Future<Output = Msg> + Send + 'static>) -> Cmd<Msg> {
         cmds.into_iter().flat_map(Self::new).collect()
+    }
+
+    pub fn lift_msg<M, F>(self, f: F) -> Cmd<M>
+    where
+        F: Fn(Msg) -> M + Clone + Send + 'static,
+        Msg: Send + 'static,
+        M: Send + 'static,
+    {
+        Cmd(self
+            .0
+            .into_iter() // own the futures
+            .map(|fut| {
+                let f = f.clone(); // each future owns its own copy of f
+                fut.map(move |msg| f(msg)).boxed() // Map<..> -> BoxFuture<'static, M>
+            })
+            .collect())
+    }
+}
+impl<Msg> IntoIterator for Cmd<Msg> {
+    type Item = BoxFuture<'static, Msg>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+impl<Msg> FromIterator<BoxFuture<'static, Msg>> for Cmd<Msg> {
+    fn from_iter<I: IntoIterator<Item = BoxFuture<'static, Msg>>>(it: I) -> Self {
+        Cmd(it.into_iter().collect())
     }
 }
 
@@ -35,7 +63,7 @@ pub struct Program<Model, Msg> {
     pub update: fn(Msg, Model) -> (Model, Cmd<Msg>),
     pub view: fn(&Model, &mut Frame),
     pub subscriptions: Sub<Msg>, // fn(&Model) -> for now fixed
-    pub lift_terminal_event: Option<fn(e: Event) -> Msg>,
+    pub lift_terminal_event: Option<fn(e: Event) -> Option<Msg>>,
     pub exit_condition: Option<fn(&Model) -> bool>,
 }
 
@@ -49,10 +77,7 @@ pub async fn run<Model, Msg>(p: Program<Model, Msg>) -> color_eyre::Result<()> {
         exit_condition,
     } = p;
 
-    let backend = CrosstermBackend::new(stderr());
-    let terminal = Terminal::new(backend)?;
-    let mut tui = Tui::new(terminal);
-    tui.enter()?;
+    let mut terminal = ratatui::init();
     let (mut model, init_cmd) = init();
     let mut in_flight: FuturesUnordered<_> = init_cmd.into_iter().collect();
 
@@ -61,13 +86,13 @@ pub async fn run<Model, Msg>(p: Program<Model, Msg>) -> color_eyre::Result<()> {
     let mut event_stream = EventStream::new();
 
     // init draw
-    tui.draw(|frame| view(&model, frame))?;
+    terminal.draw(|frame| view(&model, frame))?;
 
     while !exit_condition.iter().any(|f| f(&model)) {
         let maybe_msg: Option<Msg> = select! {
             Some(new_msg) = in_flight.next() => Some(new_msg),
             Some(evt) = event_stream.next() => { match evt {
-                    Ok(e) => lift_event.map(|f|f(e)),
+                    Ok(e) => lift_event.map(|f|f(e)).flatten(),
                     Err(_) => None,
                 }
             },
@@ -78,10 +103,9 @@ pub async fn run<Model, Msg>(p: Program<Model, Msg>) -> color_eyre::Result<()> {
             let (new_model, created_cmd) = update(new_msg, model);
             in_flight.extend(created_cmd);
             model = new_model;
-            tui.draw(|frame| view(&model, frame))?;
+            terminal.draw(|frame| view(&model, frame))?;
         }
     }
-    // Exit the user interface.
-    tui.exit()?;
+    ratatui::restore();
     Ok(())
 }
