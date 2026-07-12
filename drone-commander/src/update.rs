@@ -4,9 +4,7 @@ use crate::model::{
 };
 use crossterm::event::{KeyCode, KeyModifiers};
 use drone_control::CommandUnit;
-use futures::FutureExt;
 use ratatea::Cmd;
-use std::sync::Arc;
 
 fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
     match state {
@@ -16,8 +14,8 @@ fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
     }
 }
 
-pub fn update_all<U: CommandUnit + 'static>(
-    command_unit: Arc<U>,
+pub fn update_all(
+    command_unit: &'static impl CommandUnit,
     msg: Msg,
     model: Model,
 ) -> (Model, Cmd<Msg>) {
@@ -143,22 +141,20 @@ fn update_mission_select(
     }
 }
 
-fn update_mission_execution<U: CommandUnit + 'static>(
-    command_unit: Arc<U>,
+fn update_mission_execution(
+    command_unit: &'static impl CommandUnit,
     model: &MissionExecutionState,
     msg: MissionExecutionMessage,
 ) -> (MissionExecutionState, Cmd<MissionExecutionMessage>) {
     match msg {
         MissionExecutionMessage::StartMission => {
-            let unit = command_unit.clone();
             let mission = model.mission.clone();
-            let mission = async move {
-                unit.run_mission(mission, async { None })
-                    .map(|_| MissionExecutionMessage::MissionResult)
-                    .await
-            };
+            let mission = command_unit.run_mission(mission, async { None });
 
-            (model.clone(), Cmd::new(mission))
+            (
+                model.clone(),
+                Cmd::new(mission, |_| MissionExecutionMessage::MissionResult),
+            )
         }
         MissionExecutionMessage::MissionResult => (model.clone(), Cmd::none()),
     }

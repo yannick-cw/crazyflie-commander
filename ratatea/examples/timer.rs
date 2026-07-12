@@ -1,6 +1,6 @@
 use crate::Msg::TerminalEvt;
 use crossterm::event::{Event, KeyCode};
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub, run};
 use ratatui::Frame;
 use ratatui::layout::Alignment;
@@ -27,7 +27,9 @@ impl Ratatea for Program {
                 elapsed_time: Duration::default(),
                 should_exit: false,
             },
-            Cmd::new(sleep(Duration::from_secs(3)).map(|_| Msg::Tick(Duration::from_secs(3)))),
+            Cmd::new(sleep(Duration::from_secs(3)), |_| {
+                Msg::Tick(Duration::from_secs(3))
+            }),
         )
     }
 
@@ -54,7 +56,10 @@ impl Ratatea for Program {
     fn view(&self, model: &Self::Model, frame: &mut Frame) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title(format!(" ⬡ CRAZYFLIE · COMMANDER {:?}", model.elapsed_time))
+            .title(format!(
+                "Timer Example -- Elapsed: {:?}",
+                model.elapsed_time
+            ))
             .title_alignment(Alignment::Center);
         frame.render_widget(block, frame.area())
     }

@@ -6,7 +6,6 @@ use drone_control::{CommandUnit, Telemetry, setup_link};
 use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub, run};
 use ratatui::prelude::*;
-use std::sync::Arc;
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
 
@@ -20,14 +19,15 @@ pub mod update;
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     // selection process
-    let command_unit = setup_link().await?;
+    // this needs to live for the whole program
+    let command_unit: &'static _ = Box::leak(Box::new(setup_link().await?));
     let receiver = command_unit.latest_telemetry();
 
     // let (_tx, receiver) = watch::channel(Telemetry::default());
 
     let p = Program {
         receiver,
-        command_unit: Arc::new(command_unit),
+        command_unit,
     };
 
     run(p).await?;
@@ -36,7 +36,7 @@ async fn main() -> color_eyre::Result<()> {
 
 struct Program<U: CommandUnit + 'static> {
     receiver: watch::Receiver<Telemetry>,
-    command_unit: Arc<U>,
+    command_unit: &'static U,
 }
 impl<U: CommandUnit> Ratatea for Program<U> {
     type Model = Model;
@@ -47,7 +47,7 @@ impl<U: CommandUnit> Ratatea for Program<U> {
     }
 
     fn update(&self, msg: Self::Msg, model: Self::Model) -> (Self::Model, Cmd<Self::Msg>) {
-        update_all(self.command_unit.clone(), msg, model)
+        update_all(self.command_unit, msg, model)
     }
 
     fn view(&self, model: &Self::Model, frame: &mut Frame) {

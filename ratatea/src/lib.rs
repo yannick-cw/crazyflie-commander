@@ -15,16 +15,20 @@ impl<Msg: 'static> Cmd<Msg> {
 
     // 'static so future owns all data it brings, as it will live
     // longer than the calling scope
-    pub fn new(cmd: impl Future<Output = Msg> + 'static) -> Cmd<Msg> {
-        Cmd(vec![Box::pin(cmd)])
+    pub fn new<A: 'static>(
+        cmd: impl Future<Output = A> + 'static,
+        to_msg: fn(A) -> Msg,
+    ) -> Cmd<Msg> {
+        let m = cmd.map(to_msg);
+        Cmd(vec![Box::pin(m)])
     }
 
     pub fn pure(msg: Msg) -> Cmd<Msg> {
-        Self::new(async move { msg })
+        Self::new(async move { msg }, |a| a)
     }
 
     pub fn batch(cmds: Vec<impl Future<Output = Msg> + 'static>) -> Cmd<Msg> {
-        cmds.into_iter().flat_map(Self::new).collect()
+        cmds.into_iter().flat_map(|o| Self::new(o, |a| a)).collect()
     }
 
     pub fn lift_msg<M, F>(self, f: F) -> Cmd<M>

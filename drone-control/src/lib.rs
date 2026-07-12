@@ -5,3 +5,4 @@ pub use control::command_unit::{Command, CommandUnit, Meters, MetersPerSecond, T
 pub use control::crazyflie::setup_link;
 pub use utils::flight_paths;
 pub use utils::errors;
+pub use control::crazyflie::CrazyflieCommandUnit;
