@@ -1,6 +1,7 @@
 use crate::messages::Msg;
 use crate::model::{Model, State};
 use crate::update::update_all;
+use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::Event;
 use drone_control::{CommandUnit, Telemetry, setup_link};
 use futures::StreamExt;
@@ -9,12 +10,10 @@ use ratatui::prelude::*;
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
 
-pub mod flight_view;
-pub mod home_view;
 pub mod messages;
-pub mod mission_select_view;
 pub mod model;
 pub mod update;
+mod view;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
@@ -85,11 +84,15 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 }
 
 // TODO:
-// 1. basic telemetry data live
-// 2. first screen: a select mission b plan mission c free flight
+// - [x] basic telemetry data live
+// - [x] first screen: a select mission b plan mission c free flight
+// - [x] messages spam into screen
 // ----
-// - TODO post mission stops telemetry?
-// - TODO log messages spam into screen
-// 3. mission abort shortcuts + buttons (exit: x)
-// 4. render position in x y z
-// 5. "connection lost"
+// - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
+// - [ ] after mission show button to return to home screen - WORKS IFF mission is not ongoing
+// - [ ] mission abort shortcuts + buttons (exit: x)
+// - [ ] add mission state to telemetry and display + progress
+// - [ ] give real time and steps estimates?
+// - [ ] render position in x y z
+// - [ ] "connection lost" warning or whatever when unplugged
+// - [ ] show logs in log window or write to file

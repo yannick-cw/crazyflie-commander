@@ -5,6 +5,7 @@ use crate::utils::errors::Res;
 use crate::utils::math::{OrbitPos, calc_orbit_points};
 use std::time::Duration;
 use std::vec;
+use tracing::info;
 
 pub async fn run_orbit(
     radius: Meters,
@@ -26,7 +27,7 @@ pub async fn run_orbit(
             true,
         )
         .await?;
-    println!("Moved to orbit..");
+    info!("Moved to orbit..");
 
     let points = calc_orbit_points(orbital_period, x, y, radius);
     let all_orbits = points.repeat(orbits);

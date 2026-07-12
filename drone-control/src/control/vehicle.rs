@@ -6,6 +6,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time;
 use tokio::time::{Instant, sleep};
+use tracing::info;
 
 pub struct Vehicle {
     cf: Crazyflie,
@@ -34,7 +35,7 @@ impl Vehicle {
     }
 
     pub async fn take_off(&self, height: Meters, duration: Duration) -> Res<()> {
-        println!("take off");
+        info!("take off");
         self.cf
             .high_level_commander
             .take_off(height.0, None, duration.as_secs_f32(), None)
@@ -52,7 +53,7 @@ impl Vehicle {
         relative: bool,
         linear: bool,
     ) -> Res<()> {
-        println!("go to {x}x {y}y {z}z");
+        info!("go to {x}x {y}y {z}z");
         self.cf
             .high_level_commander
             .go_to(
@@ -70,7 +71,7 @@ impl Vehicle {
     }
 
     pub async fn land(&self, duration: Duration) -> Res<()> {
-        println!("land in place");
+        info!("land in place");
         self.cf
             .high_level_commander
             .land(0.0, None, duration.as_secs_f32(), None)
@@ -79,7 +80,7 @@ impl Vehicle {
     }
 
     pub async fn send_setpoint(&self, setpoint: Setpoint) -> Res<()> {
-        // println!("sending setpoint {setpoint:?}");
+        // info!("sending setpoint {setpoint:?}");
         match setpoint {
             Setpoint::VelocityPoint {
                 vx,
@@ -108,20 +109,20 @@ impl Vehicle {
     }
 
     pub async fn notify_setpoint_stop(&self) -> Res<()> {
-        println!("setpoint stop - low level commander out.");
+        info!("setpoint stop - low level commander out.");
         self.cf.commander.notify_setpoint_stop(0).await?;
         Ok(())
     }
 
     pub async fn emergency_stop(&self) -> Res<()> {
-        println!("emergency stop!");
+        info!("emergency stop!");
         self.cf.localization.emergency.send_emergency_stop().await?;
         sleep(Duration::from_secs(1)).await;
         Ok(())
     }
 
     pub async fn return_home(&self) -> Res<()> {
-        println!("returning home!");
+        info!("returning home!");
         self.notify_setpoint_stop().await?;
         self.go_to(
             Meters(0.0),

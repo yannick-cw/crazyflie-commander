@@ -1,9 +1,9 @@
-use std::time::Duration;
 use crate::control::command_unit::Command::{
     BilliardBox, Land, MoveToWaypoint, Orbit, SmoothPath, Takeoff,
 };
 use crate::control::command_unit::FlightMode::{BodyFrame, Strafe};
 use crate::control::command_unit::{BilliardParams, Command, Meters, MetersPerSecond, Waypoint};
+use std::time::Duration;
 
 pub fn haus_nikolaus() -> Vec<Command> {
     let go_to_corner = |x: f32, y: f32| MoveToWaypoint {
@@ -42,7 +42,7 @@ pub fn orbit() -> Vec<Command> {
         Orbit {
             radius: Meters(0.7),
             orbital_period: Duration::from_secs(4),
-            orbits: 30,
+            orbits: 5,
             z: Meters(0.5),
         },
         MoveToWaypoint {

@@ -10,6 +10,7 @@ use crazyflie_lib::subsystems::log::LogPeriod;
 use tokio::select;
 use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
+use tracing::info;
 
 pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     let link_context = crazyflie_link::LinkContext::new();
@@ -87,19 +88,19 @@ impl CrazyflieCommandUnit {
         for command in mission {
             match command {
                 Command::Takeoff { height, duration } => {
-                    println!("Take Off...");
+                    info!("Take Off...");
                     vehicle.take_off(height, duration).await?;
                 }
                 Command::Move { x, y, z, duration } => {
-                    println!("Moving...");
+                    info!("Moving...");
                     vehicle.go_to(x, y, z, 0.0, duration, true, false).await?;
                 }
                 Command::MoveToWaypoint { x, y, z, duration } => {
-                    println!("Moving to point...");
+                    info!("Moving to point...");
                     vehicle.go_to(x, y, z, 0.0, duration, false, false).await?;
                 }
                 Command::Land { duration } => {
-                    println!("Landing...");
+                    info!("Landing...");
                     vehicle.land(duration).await?;
                 }
                 Command::Hover { duration } => sleep(duration).await,
@@ -123,11 +124,11 @@ impl CrazyflieCommandUnit {
     async fn abort_mission(&self, abort: Abort) -> Res<()> {
         match abort {
             Abort::HardStop => {
-                println!("HARD STOP..");
+                info!("HARD STOP..");
                 self.autopilot.emergency_stop().await
             }
             Abort::Land => {
-                println!("Abort Land..");
+                info!("Abort Land..");
                 self.autopilot.return_home().await
             }
         }
@@ -146,14 +147,14 @@ impl CommandUnit for CrazyflieCommandUnit {
         // runs mission or aborts on keypress or on low battery
         Ok(select! {
             mission = self.start_mission(mission) => {
-                println!("Mission complete");
+                info!("Mission complete");
                 mission?
             }
             Some(abort) = abort_signal => {
                 self.abort_mission(abort).await?
             }
             _ = is_low_bat=> {
-                println!("Low battery - returning home");
+                info!("Low battery - returning home");
                 self.autopilot.return_home().await?
             }
         })
