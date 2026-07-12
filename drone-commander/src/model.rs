@@ -24,7 +24,7 @@ impl Default for Model {
 #[derive(Debug, Clone)]
 pub enum State {
     Home(HomeState),
-    MissionExecution(MissionPlan),
+    MissionExecution(MissionExecutionState),
     // this opens a selection view
     MissionSelect(MissionSelectState),
     MissionPlan(),
@@ -33,7 +33,7 @@ pub enum State {
 }
 
 #[derive(Clone, Debug)]
-pub struct MissionPlan {
+pub struct MissionExecutionState {
     pub mission: Vec<Command>,
     pub name: String,
 }

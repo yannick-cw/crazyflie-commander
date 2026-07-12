@@ -1,7 +1,12 @@
-use crate::messages::{MissionSelectMessage, Msg, NavigationMessage};
-use crate::model::{HomeState, MissionPlan, MissionSelectState, Model, State};
+use crate::messages::{MissionExecutionMessage, MissionSelectMessage, Msg, NavigationMessage};
+use crate::model::{
+    HomeState, MissionExecutionState, MissionSelectState, ModeSelection, Model, State,
+};
 use crossterm::event::{KeyCode, KeyModifiers};
+use drone_control::CommandUnit;
+use futures::FutureExt;
 use ratatea::Cmd;
+use std::sync::Arc;
 
 fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
     match state {
@@ -11,7 +16,11 @@ fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
     }
 }
 
-pub fn update_all(msg: Msg, model: Model) -> (Model, Cmd<Msg>) {
+pub fn update_all<U: CommandUnit + 'static>(
+    command_unit: Arc<U>,
+    msg: Msg,
+    model: Model,
+) -> (Model, Cmd<Msg>) {
     let mut model: Model = model.clone();
     match (&model.state, msg) {
         // global message
@@ -48,13 +57,21 @@ pub fn update_all(msg: Msg, model: Model) -> (Model, Cmd<Msg>) {
         // ------------------------------------------------------------
         // communication towards parent to change view
         // ------------------------------------------------------------
-        (_, Msg::Home(NavigationMessage::Select)) => {
+        (
+            State::Home(HomeState {
+                selected_mode: ModeSelection::MissionSelectItem,
+            }),
+            Msg::Home(NavigationMessage::Select),
+        ) => {
             model.state = State::MissionSelect(MissionSelectState::default());
             (model, Cmd::none())
         }
         (_, Msg::MissionSelect(MissionSelectMessage::Selected(mission))) => {
             model.state = State::MissionExecution(mission);
-            (model, Cmd::none())
+            (
+                model,
+                Cmd::pure(Msg::MissionExecution(MissionExecutionMessage::StartMission)),
+            )
         }
         // ------------------------------------------------------------
         (State::Home(home_state), Msg::Home(msg)) => {
@@ -66,6 +83,12 @@ pub fn update_all(msg: Msg, model: Model) -> (Model, Cmd<Msg>) {
             let (select, next_home_msg) = update_mission_select(&select_state, msg);
             model.state = State::MissionSelect(select);
             let next_msg = next_home_msg.lift_msg(Msg::MissionSelect);
+            (model, next_msg)
+        }
+        (State::MissionExecution(state), Msg::MissionExecution(msg)) => {
+            let (select, next_msg) = update_mission_execution(command_unit, &state, msg);
+            model.state = State::MissionExecution(select);
+            let next_msg = next_msg.lift_msg(Msg::MissionExecution);
             (model, next_msg)
         }
         (&State::MissionExecution(_), Msg::MissionSelect(_))
@@ -91,7 +114,6 @@ fn update_home(model: &HomeState, msg: NavigationMessage) -> (HomeState, Cmd<Msg
     }
 }
 
-// todo ergonomics of returning nested Cmd<MissionSelectMessage> are not nice yet
 fn update_mission_select(
     model: &MissionSelectState,
     msg: MissionSelectMessage,
@@ -110,7 +132,7 @@ fn update_mission_select(
         // sends message out
         MissionSelectMessage::Nav(NavigationMessage::Select) => {
             let (name, mission) = &model.missions[model.selection];
-            let message = MissionSelectMessage::Selected(MissionPlan {
+            let message = MissionSelectMessage::Selected(MissionExecutionState {
                 mission: mission.clone(),
                 name: name.clone(),
             });
@@ -118,5 +140,26 @@ fn update_mission_select(
         }
         // handled by parent
         MissionSelectMessage::Selected(_) => (model, Cmd::none()),
+    }
+}
+
+fn update_mission_execution<U: CommandUnit + 'static>(
+    command_unit: Arc<U>,
+    model: &MissionExecutionState,
+    msg: MissionExecutionMessage,
+) -> (MissionExecutionState, Cmd<MissionExecutionMessage>) {
+    match msg {
+        MissionExecutionMessage::StartMission => {
+            let unit = command_unit.clone();
+            let mission = model.mission.clone();
+            let mission = async move {
+                unit.run_mission(mission, async { None })
+                    .map(|_| MissionExecutionMessage::MissionResult)
+                    .await
+            };
+
+            (model.clone(), Cmd::new(mission))
+        }
+        MissionExecutionMessage::MissionResult => (model.clone(), Cmd::none()),
     }
 }
