@@ -15,6 +15,7 @@ ratatea= { path = "../ratatea" }
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-stream = { version = "0.1.18", features = ["time", "sync"] }
 futures = "0.3.32"
+fastrand = "2.4.1"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 #[profile.release]

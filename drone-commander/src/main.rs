@@ -3,11 +3,16 @@ use crate::model::{Model, State};
 use crate::update::update_all;
 use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::Event;
-use drone_control::{CommandUnit, Telemetry, setup_link};
+use drone_control::errors::Res;
+use drone_control::{Abort, Command, CommandUnit, Meters, MetersPerSecond, Telemetry, setup_link};
 use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub, run};
 use ratatui::prelude::*;
+use std::time::Duration;
+use tokio::sync::broadcast::Receiver;
 use tokio::sync::watch;
+use tokio::time::sleep;
+use tokio::{select, spawn, time};
 use tokio_stream::wrappers::WatchStream;
 
 pub mod messages;
@@ -15,26 +20,65 @@ pub mod model;
 pub mod update;
 mod view;
 
+struct DebugUnit;
+impl CommandUnit for DebugUnit {
+    async fn run_mission(
+        &self,
+        _mission: Vec<Command>,
+        abort_signal: impl Future<Output = Option<Abort>>,
+    ) -> Res<()> {
+        Ok(select! {
+            _ = sleep(Duration::from_secs(5))=> {},
+            Some(_) = abort_signal=> {},
+        })
+    }
+
+    fn telemetry(&self) -> Receiver<Telemetry> {
+        todo!()
+    }
+
+    fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
+        let (sender, receiver) = watch::channel(Telemetry::default());
+        spawn(async move {
+            let mut ticks = time::interval(Duration::from_millis(10));
+            let mut tele = Telemetry::default();
+            loop {
+                ticks.tick().await;
+                let j = || fastrand::f32() - 0.5;
+                tele.x = tele.x + Meters(j());
+                tele.y = tele.y + Meters(j());
+                tele.z = tele.z + Meters(j());
+                tele.x_v = tele.x_v + MetersPerSecond(j());
+                tele.y_v = tele.y_v + MetersPerSecond(j());
+                tele.yaw += j();
+                sender.send(tele).unwrap();
+            }
+        });
+        receiver
+    }
+}
+
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
-    // selection process
-    // this needs to live for the whole program
-    let command_unit: &'static _ = Box::leak(Box::new(setup_link().await?));
-    let receiver = command_unit.latest_telemetry();
+    Ok(match setup_link().await {
+        Ok(real_unit) => {
+            // selection process
+            // this needs to live for the whole program
+            let command_unit: &'static _ = Box::leak(Box::new(real_unit));
 
-    // let (_tx, receiver) = watch::channel(Telemetry::default());
-
-    let p = Program {
-        receiver,
-        command_unit,
-    };
-
-    run(p).await?;
-    Ok(())
+            let p = Program { command_unit };
+            run(p).await?;
+        }
+        _ => {
+            let p = Program {
+                command_unit: &DebugUnit,
+            };
+            run(p).await?;
+        }
+    })
 }
 
 struct Program<U: CommandUnit + 'static> {
-    receiver: watch::Receiver<Telemetry>,
     command_unit: &'static U,
 }
 impl<U: CommandUnit> Ratatea for Program<U> {
@@ -62,7 +106,7 @@ impl<U: CommandUnit> Ratatea for Program<U> {
     fn subscriptions(&self, _m: &Model) -> Sub<Self::Msg> {
         {
             vec![
-                WatchStream::new(self.receiver.clone())
+                WatchStream::new(self.command_unit.latest_telemetry().clone())
                     .map(Msg::TelemetryUpdate)
                     .boxed(),
             ]
@@ -87,10 +131,10 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 // - [x] basic telemetry data live
 // - [x] first screen: a select mission b plan mission c free flight
 // - [x] messages spam into screen
+// - [x] mission abort shortcuts + buttons (exit: x)
 // ----
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] after mission show button to return to home screen - WORKS IFF mission is not ongoing
-// - [ ] mission abort shortcuts + buttons (exit: x)
 // - [ ] add mission state to telemetry and display + progress
 // - [ ] give real time and steps estimates?
 // - [ ] render position in x y z
