@@ -1,4 +1,3 @@
-use crate::control::command_unit::BatteryLevel::High;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
@@ -107,8 +106,29 @@ pub enum BatteryLevel {
 }
 impl Default for BatteryLevel {
     fn default() -> Self {
-        High
+        BatteryLevel::High
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum MissionStatus {
+    Idle,
+    Running(Option<Progress>),
+    Aborted(Reason),
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Reason {
+    Landing,
+    HardStop,
+    LowBattery,
+}
+
+#[derive(Debug, Clone)]
+pub struct Progress {
+    pub current_command: Command,
+    pub command_num: usize,
+    pub total_commands: usize,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Default)]
@@ -182,4 +202,5 @@ pub trait CommandUnit {
     ) -> Res<()>;
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
     fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
+    fn mission_status(&self) -> watch::Receiver<MissionStatus>;
 }

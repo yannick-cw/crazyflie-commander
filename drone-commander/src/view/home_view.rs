@@ -1,15 +1,16 @@
 use crate::model::HomeState;
 use crate::model::ModeSelection::{FreeFlightItem, MissionPlanItem, MissionSelectItem};
 use crate::view::view_common::theme::*;
-use crate::view::view_common::{controls, panel, selectable, shell};
+use crate::view::view_common::{center, controls, panel, selectable, shell};
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
 };
+
+// AI GENERATED
 
 pub fn view(model: &HomeState, frame: &mut Frame) {
     let area = frame.area();
@@ -23,18 +24,7 @@ pub fn view(model: &HomeState, frame: &mut Frame) {
     frame.render_widget(shell, area);
 
     // centre a modest menu panel
-    let [_, mid, _] = Layout::vertical([
-        Constraint::Fill(1),
-        Constraint::Length(9),
-        Constraint::Fill(1),
-    ])
-    .areas(inner);
-    let [_, menu_area, _] = Layout::horizontal([
-        Constraint::Fill(1),
-        Constraint::Length(48),
-        Constraint::Fill(1),
-    ])
-    .areas(mid);
+    let menu_area = center(inner, 48, 9);
 
     let modes = [
         (MissionSelectItem, "Select Mission"),

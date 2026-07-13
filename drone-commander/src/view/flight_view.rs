@@ -1,48 +1,50 @@
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Layout},
+    layout::{Constraint, Layout},
     style::{Color, Modifier, Style},
+    symbols::Marker,
     text::{Line, Span},
-    widgets::{Block, BorderType, Gauge, Paragraph},
+    widgets::{
+        Gauge, Paragraph, Widget,
+        canvas::{Canvas, Circle},
+    },
 };
 
-use crate::model::Model;
-use drone_control::Telemetry;
-use theme::*;
+use crate::model::{MissionExecutionState, Model, State};
+use crate::view::view_common::theme::*;
+use crate::view::view_common::{controls, panel, shell};
+use drone_control::{Command, Meters, MissionStatus, Telemetry};
 
-// I can't be bothered to write the view by hand -- this is fully claude generate
-
-/// Semantic palette. Swap these to restyle the whole screen in one place.
-/// Named ANSI colours adapt to the terminal's own theme; use `Color::Rgb`/tailwind for a fixed look.
-pub mod theme {
-    use ratatui::style::Color;
-
-    pub const BRAND: Color = Color::Cyan; // shell border + title accent
-    pub const BORDER: Color = Color::DarkGray; // panel borders
-    pub const TITLE: Color = Color::Gray; // panel titles
-    pub const LABEL: Color = Color::DarkGray; // metric labels / dim text
-    pub const CHIP_FG: Color = Color::Black; // text on a coloured chip
-
-    pub const SELECTED: Color = Color::LightGreen;
-
-    pub const POSITION: Color = Color::Cyan;
-    pub const VELOCITY: Color = Color::Green;
-    pub const HEADING: Color = Color::Yellow;
-    pub const MISSION: Color = Color::Magenta;
-
-    pub const OK: Color = Color::Green;
-    pub const WARN: Color = Color::Yellow;
-    pub const DANGER: Color = Color::Red;
-}
+// AI GENERATED
 
 /// Speed (m/s) that maps to a full gauge / "hot" colour.
 const MAX_SPEED: f32 = 2.5;
+/// Side length of the square top-down map viewport, in metres (takeoff origin at bottom-right).
+const MAP_M: f64 = 2.0;
 
 pub fn view(model: &Model, frame: &mut Frame) {
     let t = &model.telemetry;
     let area = frame.area();
 
-    let shell = shell();
+    let mission = match &model.state {
+        State::MissionExecution(s) => Some(s),
+        _ => None,
+    };
+    // the back-to-menu hint only makes sense once the mission is no longer running
+    let show_back =
+        matches!(mission, Some(s) if !matches!(s.mission_status, MissionStatus::Running(_)));
+
+    let keys: Vec<(&str, &str, Color)> = [
+        Some(("x", "EMERGENCY STOP", DANGER)),
+        Some(("l", "LAND", WARN)),
+        show_back.then_some(("b", "back to menu", SELECTED)),
+        Some(("q", "quit", LABEL)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let shell = shell(controls(&keys));
     let inner = shell.inner(area);
     frame.render_widget(shell, area);
 
@@ -66,64 +68,103 @@ pub fn view(model: &Model, frame: &mut Frame) {
     ])
     .areas(side);
 
-    // TODO: dummy until the model carries mission + progress
-    let mission = "Orbit";
-    let progress = 0.42;
-
-    frame.render_widget(mission_bar(mission, progress), mission_area);
-    frame.render_widget(map_placeholder(), map_area);
+    frame.render_widget(mission_bar(mission), mission_area);
+    frame.render_widget(map(t, mission), map_area);
     frame.render_widget(position_panel(t), pos_area);
     frame.render_widget(velocity_panel(t), vel_area);
     frame.render_widget(state_panel(t), state_area);
     frame.render_widget(speed_gauge(t), speed_area);
 }
 
-pub fn shell() -> Block<'static> {
-    Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(BRAND))
-        .title(accent(" ⬡ CRAZYFLIE · COMMANDER "))
-        .title_alignment(Alignment::Center)
-        .title_bottom(controls().centered())
-}
-
-/// Bottom-bar key hints: emergency stop, safe land, quit.
-fn controls() -> Line<'static> {
-    let key = |k: &str, label: &str, color: Color| {
-        vec![
-            Span::styled(
-                format!(" {k} "),
-                Style::new()
-                    .fg(CHIP_FG)
-                    .bg(color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(format!(" {label}   "), Style::new().fg(color)),
-        ]
+fn mission_bar(mission: Option<&MissionExecutionState>) -> Gauge<'static> {
+    let (title, ratio, label, color) = match mission {
+        None => (" FREE FLIGHT ".to_string(), 0.0, "manual".to_string(), LABEL),
+        Some(s) => {
+            let title = format!(" MISSION · {} ", s.name);
+            match &s.mission_status {
+                MissionStatus::Idle => (title, 0.0, "idle".to_string(), LABEL),
+                MissionStatus::Running(None) => (title, 0.0, "starting…".to_string(), MISSION),
+                MissionStatus::Running(Some(p)) => {
+                    let ratio = p.command_num as f64 / p.total_commands.max(1) as f64;
+                    let step = format!("{:?}", p.current_command);
+                    let step = step.split([' ', '{']).next().unwrap_or(&step);
+                    let label = format!("{step} · {}/{}", p.command_num, p.total_commands);
+                    (title, ratio, label, MISSION)
+                }
+                MissionStatus::Aborted(reason) => {
+                    (title, 1.0, format!("aborted · {reason:?}"), DANGER)
+                }
+            }
+        }
     };
-    Line::from(
-        [
-            key("x", "EMERGENCY STOP", DANGER),
-            key("l", "LAND", WARN),
-            key("q", "quit", LABEL),
-        ]
-        .concat(),
-    )
-}
-
-fn mission_bar(name: &str, progress: f64) -> Gauge<'static> {
     Gauge::default()
-        .block(panel(format!(" MISSION · {name} ")))
-        .gauge_style(Style::new().fg(MISSION))
-        .ratio(progress.clamp(0.0, 1.0))
-        .label(format!("{:.0}%", progress * 100.0))
+        .block(panel(title))
+        .gauge_style(Style::new().fg(color))
+        .ratio(ratio.clamp(0.0, 1.0))
+        .label(label)
 }
 
-fn map_placeholder() -> Paragraph<'static> {
-    Paragraph::new("\n· map ·")
-        .alignment(Alignment::Center)
-        .style(Style::new().fg(LABEL))
+/// Top-down braille map: the planned route (every waypoint, the current one highlighted)
+/// plus the drone's live position.
+fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
+    let drone = (t.x() as f64, t.y() as f64);
+    let route = mission.map(|m| waypoints(&m.mission)).unwrap_or_default();
+    let current = mission.and_then(current_index);
+    // top-down as seen by the pilot: origin (takeoff) at bottom-right,
+    // x (forward) grows up the screen, y (left) grows to the left
+    let tf = |(x, y): (f64, f64)| (MAP_M - y, x);
+    Canvas::default()
         .block(panel(" MAP "))
+        .marker(Marker::Braille)
+        .x_bounds([0.0, MAP_M])
+        .y_bounds([0.0, MAP_M])
+        .paint(move |ctx| {
+            // every waypoint visible; the one being flown to is highlighted bigger + green
+            for (i, &point) in route.iter().enumerate() {
+                let (px, py) = tf(point);
+                let (radius, color) = if Some(i) == current {
+                    (0.10, SELECTED)
+                } else {
+                    (0.06, MISSION)
+                };
+                ctx.draw(&Circle { x: px, y: py, radius, color });
+            }
+            // the drone
+            let (dx, dy) = tf(drone);
+            ctx.draw(&Circle { x: dx, y: dy, radius: 0.13, color: POSITION });
+        })
+}
+
+/// Each command's target point in map metres (takeoff origin), threaded through a
+/// moving cursor so relative moves accumulate into the flown route.
+fn waypoints(mission: &[Command]) -> Vec<(f64, f64)> {
+    let m = |v: &Meters| v.0 as f64;
+    mission
+        .iter()
+        .scan((0.0, 0.0), |cursor, cmd| {
+            *cursor = match cmd {
+                Command::Move { x, y, .. } => (cursor.0 + m(x), cursor.1 + m(y)),
+                Command::MoveToWaypoint { x, y, .. } => (m(x), m(y)),
+                Command::SmoothPath { waypoints, .. } => {
+                    waypoints.last().map(|w| (m(&w.x), m(&w.y))).unwrap_or(*cursor)
+                }
+                Command::BilliardBox(p) => (
+                    (m(&p.bl_x) + m(&p.tr_x)) / 2.0,
+                    (m(&p.bl_y) + m(&p.tr_y)) / 2.0,
+                ),
+                // Takeoff / Orbit / Hover / Land hold position
+                _ => *cursor,
+            };
+            Some(*cursor)
+        })
+        .collect()
+}
+
+fn current_index(mission: &MissionExecutionState) -> Option<usize> {
+    match &mission.mission_status {
+        MissionStatus::Running(Some(p)) => Some(p.command_num),
+        _ => None,
+    }
 }
 
 fn position_panel(t: &Telemetry) -> Paragraph<'static> {
@@ -181,24 +222,6 @@ fn metric(label: &str, value: String, color: Color) -> Line<'static> {
         Span::styled(format!(" {label:<4}"), Style::new().fg(LABEL)),
         Span::styled(value, Style::new().fg(color).add_modifier(Modifier::BOLD)),
     ])
-}
-
-/// A subtle rounded sub-panel with a bold grey title.
-fn panel(title: impl Into<String>) -> Block<'static> {
-    Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(BORDER))
-        .title(Span::styled(
-            title.into(),
-            Style::new().fg(TITLE).add_modifier(Modifier::BOLD),
-        ))
-}
-
-pub fn accent(s: &str) -> Span<'static> {
-    Span::styled(
-        s.to_string(),
-        Style::new().fg(BRAND).add_modifier(Modifier::BOLD),
-    )
 }
 
 /// Green (slow) → yellow → red (fast).

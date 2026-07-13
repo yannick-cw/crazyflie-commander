@@ -29,6 +29,7 @@ pub fn update_all(
             model.exit = true;
             (model, Cmd::none())
         }
+        (_, Msg::ToHomeScreen) => (Model::default(), Cmd::none()),
         // ------------------------------------------------------------
         // communication towards parent to change view
         // ------------------------------------------------------------
@@ -46,6 +47,7 @@ pub fn update_all(
                 mission,
                 name,
                 abort_sender: None,
+                mission_status: drone_control::MissionStatus::Running(None),
             };
             model.state = State::MissionExecution(execution_state);
             (
@@ -145,6 +147,10 @@ fn update_mission_execution(
                 Cmd::new(signal, |_| MissionExecutionMessage::MissionResult)
             }
         },
+        MissionExecutionMessage::MissionUpdate(update) => {
+            model.mission_status = update;
+            Cmd::none()
+        }
     }
 }
 
@@ -154,36 +160,29 @@ fn update_key_evt(key_event: KeyEvent, model: &Model) -> Cmd<Msg> {
         KeyCode::Char('c') | KeyCode::Char('C') if key_event.modifiers == KeyModifiers::CONTROL => {
             Cmd::pure(Msg::Quit)
         }
-        KeyCode::Char('j') | KeyCode::Down => {
-            let next_msg = navigation_cmd(&model.state, NavigationMessage::Down);
-            next_msg
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            let next_msg = navigation_cmd(&model.state, NavigationMessage::Up);
-            next_msg
-        }
-        KeyCode::Char('l') => {
-            let next_msg = match model.state {
-                State::MissionExecution(_) => {
-                    Cmd::pure(Msg::MissionExecution(MissionExecutionMessage::SafeLand))
-                }
-                _ => Cmd::none(),
-            };
-            next_msg
-        }
-        KeyCode::Char('x') => {
-            let next_msg = match model.state {
-                State::MissionExecution(_) => Cmd::pure(Msg::MissionExecution(
-                    MissionExecutionMessage::EmergencyAbort,
-                )),
-                _ => Cmd::none(),
-            };
-            next_msg
-        }
-        KeyCode::Enter => {
-            let next_msg = navigation_cmd(&model.state, NavigationMessage::Select);
-            next_msg
-        }
+        KeyCode::Char('j') | KeyCode::Down => navigation_cmd(&model.state, NavigationMessage::Down),
+        KeyCode::Char('k') | KeyCode::Up => navigation_cmd(&model.state, NavigationMessage::Up),
+        KeyCode::Char('l') => match model.state {
+            State::MissionExecution(_) => {
+                Cmd::pure(Msg::MissionExecution(MissionExecutionMessage::SafeLand))
+            }
+            _ => Cmd::none(),
+        },
+        KeyCode::Char('b') => match &model.state {
+            State::MissionExecution(MissionExecutionState {
+                mission_status:
+                    drone_control::MissionStatus::Idle | drone_control::MissionStatus::Aborted(_),
+                ..
+            }) => Cmd::pure(Msg::ToHomeScreen),
+            _ => Cmd::none(),
+        },
+        KeyCode::Char('x') => match model.state {
+            State::MissionExecution(_) => Cmd::pure(Msg::MissionExecution(
+                MissionExecutionMessage::EmergencyAbort,
+            )),
+            _ => Cmd::none(),
+        },
+        KeyCode::Enter => navigation_cmd(&model.state, NavigationMessage::Select),
         _ => Cmd::none(),
     }
 }

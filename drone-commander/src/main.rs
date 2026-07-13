@@ -1,62 +1,20 @@
-use crate::messages::Msg;
+use crate::dev_unit::DevUnit;
+use crate::messages::{MissionExecutionMessage, Msg};
 use crate::model::{Model, State};
 use crate::update::update_all;
 use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::Event;
-use drone_control::errors::Res;
-use drone_control::{Abort, Command, CommandUnit, Meters, MetersPerSecond, Telemetry, setup_link};
+use drone_control::{CommandUnit, setup_link};
 use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub, run};
 use ratatui::prelude::*;
-use std::time::Duration;
-use tokio::sync::broadcast::Receiver;
-use tokio::sync::watch;
-use tokio::time::sleep;
-use tokio::{select, spawn, time};
 use tokio_stream::wrappers::WatchStream;
 
+mod dev_unit;
 pub mod messages;
 pub mod model;
 pub mod update;
 mod view;
-
-struct DebugUnit;
-impl CommandUnit for DebugUnit {
-    async fn run_mission(
-        &self,
-        _mission: Vec<Command>,
-        abort_signal: impl Future<Output = Option<Abort>>,
-    ) -> Res<()> {
-        Ok(select! {
-            _ = sleep(Duration::from_secs(5))=> {},
-            Some(_) = abort_signal=> {},
-        })
-    }
-
-    fn telemetry(&self) -> Receiver<Telemetry> {
-        todo!()
-    }
-
-    fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
-        let (sender, receiver) = watch::channel(Telemetry::default());
-        spawn(async move {
-            let mut ticks = time::interval(Duration::from_millis(10));
-            let mut tele = Telemetry::default();
-            loop {
-                ticks.tick().await;
-                let j = || fastrand::f32() - 0.5;
-                tele.x = tele.x + Meters(j());
-                tele.y = tele.y + Meters(j());
-                tele.z = tele.z + Meters(j());
-                tele.x_v = tele.x_v + MetersPerSecond(j());
-                tele.y_v = tele.y_v + MetersPerSecond(j());
-                tele.yaw += j();
-                sender.send(tele).unwrap();
-            }
-        });
-        receiver
-    }
-}
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
@@ -70,9 +28,9 @@ async fn main() -> color_eyre::Result<()> {
             run(p).await?;
         }
         _ => {
-            let p = Program {
-                command_unit: &DebugUnit,
-            };
+            // fallback for dev
+            let command_unit = &DevUnit;
+            let p = Program { command_unit };
             run(p).await?;
         }
     })
@@ -109,6 +67,11 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                 WatchStream::new(self.command_unit.latest_telemetry().clone())
                     .map(Msg::TelemetryUpdate)
                     .boxed(),
+                WatchStream::new(self.command_unit.mission_status().clone())
+                    .map(|update| {
+                        Msg::MissionExecution(MissionExecutionMessage::MissionUpdate(update))
+                    })
+                    .boxed(),
             ]
         }
     }
@@ -132,11 +95,13 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 // - [x] first screen: a select mission b plan mission c free flight
 // - [x] messages spam into screen
 // - [x] mission abort shortcuts + buttons (exit: x)
+// - [x] after mission show button to return to home screen - WORKS IFF mission is not ongoing
+// - [x] add mission state to telemetry and display + progress
+// - [ ] give real time and steps estimates? - Wont do
+// - [x] render position in x y z
 // ----
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
-// - [ ] after mission show button to return to home screen - WORKS IFF mission is not ongoing
-// - [ ] add mission state to telemetry and display + progress
-// - [ ] give real time and steps estimates?
-// - [ ] render position in x y z
 // - [ ] "connection lost" warning or whatever when unplugged
 // - [ ] show logs in log window or write to file
+// - [ ] build free flight; wasd, QE for yaw, jk for up down
+// - [ ] build mission planner

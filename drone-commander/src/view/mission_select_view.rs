@@ -9,6 +9,8 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+// AI GENERATED
+
 pub fn view(model: &MissionSelectState, frame: &mut Frame) {
     let area = frame.area();
 

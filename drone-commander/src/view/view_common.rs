@@ -1,17 +1,40 @@
 //! Shared view primitives so every screen (flight / home / mission-select) looks the same.
 
 use ratatui::{
-    layout::Alignment,
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType},
 };
 
-pub use crate::view::flight_view::theme; // re-export the palette for the view modules
-use crate::view::flight_view::theme::*;
+use theme::*;
 
-/// The outer shell — identical framing to the flight view, but each screen supplies
-/// its own footer of key hints via [`controls`].
+// AI GENERATED
+
+/// Semantic palette. Swap these to restyle every screen in one place.
+/// Named ANSI colours adapt to the terminal's own theme; use `Color::Rgb` for a fixed look.
+pub mod theme {
+    use ratatui::style::Color;
+
+    pub const BRAND: Color = Color::Cyan; // shell border + title accent
+    pub const BORDER: Color = Color::DarkGray; // panel borders
+    pub const TITLE: Color = Color::Gray; // panel titles
+    pub const LABEL: Color = Color::DarkGray; // metric labels / dim text
+    pub const CHIP_FG: Color = Color::Black; // text on a coloured chip
+
+    pub const SELECTED: Color = Color::LightGreen;
+
+    pub const POSITION: Color = Color::Cyan;
+    pub const VELOCITY: Color = Color::Green;
+    pub const HEADING: Color = Color::Yellow;
+    pub const MISSION: Color = Color::Magenta;
+
+    pub const OK: Color = Color::Green;
+    pub const WARN: Color = Color::Yellow;
+    pub const DANGER: Color = Color::Red;
+}
+
+/// The outer shell — same framing on every screen; each supplies its own footer via [`controls`].
 pub fn shell(controls: Line<'static>) -> Block<'static> {
     Block::bordered()
         .border_type(BorderType::Rounded)
@@ -67,4 +90,21 @@ pub fn selectable(label: &str, selected: bool) -> Line<'static> {
         Span::styled(marker, style),
         Span::styled(label.to_string(), style),
     ])
+}
+
+/// A fixed-size rectangle centred inside `area`.
+pub fn center(area: Rect, width: u16, height: u16) -> Rect {
+    let [_, mid, _] = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(height),
+        Constraint::Fill(1),
+    ])
+    .areas(area);
+    let [_, centre, _] = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(width),
+        Constraint::Fill(1),
+    ])
+    .areas(mid);
+    centre
 }

@@ -1,13 +1,15 @@
-use crate::control::command_unit::{Abort, Command, CommandUnit, Telemetry};
+use crate::control::command_unit::{Abort, Command, CommandUnit, MissionStatus, Telemetry};
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
+use crate::{Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use tokio::select;
+use tokio::sync::watch::Receiver;
 use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
 use tracing::info;
@@ -66,10 +68,13 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
             }
         }
     });
+    let (status_sender, _) = watch::channel(MissionStatus::Idle);
+    let mission_status = status_sender.clone();
     Ok(CrazyflieCommandUnit {
         autopilot: Vehicle::new(cf, watch_tx.subscribe()),
         telemetry_sender: tx,
         telemetry_latest: watch_tx,
+        mission_status,
     })
 }
 
@@ -77,6 +82,7 @@ pub struct CrazyflieCommandUnit {
     autopilot: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,
     telemetry_latest: watch::Sender<Telemetry>,
+    mission_status: watch::Sender<MissionStatus>,
 }
 
 impl CrazyflieCommandUnit {
@@ -84,8 +90,17 @@ impl CrazyflieCommandUnit {
         let vehicle = &self.autopilot;
 
         vehicle.reset_estimator().await?;
+        let total_commands = mission.len();
 
-        for command in mission {
+        for (i, command) in mission.into_iter().enumerate() {
+            self.mission_status
+                .send(MissionStatus::Running(Some(Progress {
+                    current_command: command.clone(),
+                    command_num: i,
+                    total_commands,
+                })))
+                .unwrap();
+
             match command {
                 Command::Takeoff { height, duration } => {
                     info!("Take Off...");
@@ -125,11 +140,23 @@ impl CrazyflieCommandUnit {
         match abort {
             Abort::HardStop => {
                 info!("HARD STOP..");
-                self.autopilot.emergency_stop().await
+                self.autopilot.emergency_stop().await?;
+
+                self.mission_status
+                    .send(MissionStatus::Aborted(Reason::HardStop))
+                    .unwrap();
+
+                Ok(())
             }
             Abort::Land => {
                 info!("Abort Land..");
-                self.autopilot.return_home().await
+                self.autopilot.return_home().await?;
+
+                self.mission_status
+                    .send(MissionStatus::Aborted(Reason::Landing))
+                    .unwrap();
+
+                Ok(())
             }
         }
     }
@@ -148,6 +175,9 @@ impl CommandUnit for CrazyflieCommandUnit {
         Ok(select! {
             mission = self.start_mission(mission) => {
                 info!("Mission complete");
+                self.mission_status
+                    .send(MissionStatus::Idle)
+                    .unwrap();
                 mission?
             }
             Some(abort) = abort_signal => {
@@ -155,7 +185,11 @@ impl CommandUnit for CrazyflieCommandUnit {
             }
             _ = is_low_bat=> {
                 info!("Low battery - returning home");
-                self.autopilot.return_home().await?
+                self.autopilot.return_home().await?;
+
+                self.mission_status
+                    .send(MissionStatus::Aborted(Reason::Landing))
+                    .unwrap();
             }
         })
     }
@@ -166,5 +200,9 @@ impl CommandUnit for CrazyflieCommandUnit {
 
     fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
         self.telemetry_latest.subscribe()
+    }
+
+    fn mission_status(&self) -> Receiver<MissionStatus> {
+        self.mission_status.subscribe()
     }
 }

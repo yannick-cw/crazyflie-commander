@@ -8,6 +8,7 @@ pub enum Msg {
     Key(KeyEvent),
     Resize,
     Quit,
+    ToHomeScreen,
     Home(NavigationMessage),
     MissionSelect(MissionSelectMessage),
     MissionExecution(MissionExecutionMessage),
@@ -25,6 +26,7 @@ pub enum MissionExecutionMessage {
     MissionResult,
     SafeLand,
     EmergencyAbort,
+    MissionUpdate(drone_control::MissionStatus),
 }
 
 #[derive(Clone, PartialEq, Copy, Debug)]

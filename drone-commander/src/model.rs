@@ -38,6 +38,7 @@ pub struct MissionExecutionState {
     pub mission: Vec<Command>,
     pub name: String,
     pub abort_sender: Option<oneshot::Sender<Abort>>,
+    pub mission_status: drone_control::MissionStatus,
 }
 
 #[derive(Debug)]
