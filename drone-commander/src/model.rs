@@ -2,7 +2,8 @@ use crate::model::State::Home;
 use drone_control::flight_paths::{
     body_frame_smooth, haus_nikolaus, lawn_mower, orbit, smooth_curves,
 };
-use drone_control::{Command, Telemetry};
+use drone_control::{Abort, Command, Telemetry};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub struct Model {
@@ -36,6 +37,7 @@ pub enum State {
 pub struct MissionExecutionState {
     pub mission: Vec<Command>,
     pub name: String,
+    pub abort_sender: Option<mpsc::Sender<Abort>>,
 }
 
 #[derive(Debug, Clone)]

@@ -24,6 +24,8 @@ pub enum MissionSelectMessage {
 pub enum MissionExecutionMessage {
     StartMission,
     MissionResult,
+    SafeLand,
+    EmergencyAbort
 }
 
 #[derive(Clone, PartialEq, Copy, Debug)]

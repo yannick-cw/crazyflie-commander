@@ -2,17 +2,11 @@ use crate::messages::{MissionExecutionMessage, MissionSelectMessage, Msg, Naviga
 use crate::model::{
     HomeState, MissionExecutionState, MissionSelectState, ModeSelection, Model, State,
 };
-use crossterm::event::{KeyCode, KeyModifiers};
-use drone_control::CommandUnit;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use drone_control::{Abort, CommandUnit};
 use ratatea::Cmd;
-
-fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
-    match state {
-        State::Home(_) => Cmd::pure(Msg::Home(nav)),
-        State::MissionSelect(_) => Cmd::pure(Msg::MissionSelect(MissionSelectMessage::Nav(nav))),
-        _ => Cmd::none(),
-    }
-}
+use tokio::sync::mpsc;
+use tokio_stream::StreamExt;
 
 pub fn update_all(
     command_unit: &'static impl CommandUnit,
@@ -27,27 +21,8 @@ pub fn update_all(
             model.telemetry = tele;
             (model, Cmd::none())
         }
-        (_, Msg::Key(key_event)) => match key_event.code {
-            KeyCode::Esc | KeyCode::Char('q') => (model, Cmd::pure(Msg::Quit)),
-            KeyCode::Char('c') | KeyCode::Char('C')
-                if key_event.modifiers == KeyModifiers::CONTROL =>
-            {
-                (model, Cmd::pure(Msg::Quit))
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                let next_msg = navigation_cmd(&model.state, NavigationMessage::Down);
-                (model, next_msg)
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                let next_msg = navigation_cmd(&model.state, NavigationMessage::Up);
-                (model, next_msg)
-            }
-            KeyCode::Enter => {
-                let next_msg = navigation_cmd(&model.state, NavigationMessage::Select);
-                (model, next_msg)
-            }
-            _ => (model, Cmd::none()),
-        },
+        // key events
+        (_, Msg::Key(key_event)) => update_key_evt(key_event, model),
         (_, Msg::Quit) => {
             model.exit = true;
             (model, Cmd::none())
@@ -133,6 +108,7 @@ fn update_mission_select(
             let message = MissionSelectMessage::Selected(MissionExecutionState {
                 mission: mission.clone(),
                 name: name.clone(),
+                abort_sender: None,
             });
             (model, Cmd::pure(message))
         }
@@ -149,13 +125,91 @@ fn update_mission_execution(
     match msg {
         MissionExecutionMessage::StartMission => {
             let mission = model.mission.clone();
-            let mission = command_unit.run_mission(mission, async { None });
+            let (sender, mut receiver) = mpsc::channel(64);
+            let mission = command_unit.run_mission(mission, async move { receiver.recv().await });
 
             (
-                model.clone(),
+                MissionExecutionState {
+                    abort_sender: Some(sender),
+                    ..model.clone()
+                },
                 Cmd::new(mission, |_| MissionExecutionMessage::MissionResult),
             )
         }
         MissionExecutionMessage::MissionResult => (model.clone(), Cmd::none()),
+        MissionExecutionMessage::SafeLand => {
+            let sender = model.abort_sender.clone();
+            match sender {
+                None => (model.clone(), Cmd::none()),
+                Some(s) => {
+                    let signal = async move { s.send(Abort::Land).await };
+                    (
+                        model.clone(),
+                        Cmd::new(signal, |_| MissionExecutionMessage::MissionResult),
+                    )
+                }
+            }
+        }
+        MissionExecutionMessage::EmergencyAbort => {
+            let sender = model.abort_sender.clone();
+            match sender {
+                None => (model.clone(), Cmd::none()),
+                Some(s) => {
+                    let signal = async move { s.send(Abort::HardStop).await };
+                    (
+                        model.clone(),
+                        Cmd::new(signal, |_| MissionExecutionMessage::MissionResult),
+                    )
+                }
+            }
+        }
+    }
+}
+
+fn update_key_evt(key_event: KeyEvent, model: Model) -> (Model, Cmd<Msg>) {
+    match key_event.code {
+        KeyCode::Esc | KeyCode::Char('q') => (model, Cmd::pure(Msg::Quit)),
+        KeyCode::Char('c') | KeyCode::Char('C') if key_event.modifiers == KeyModifiers::CONTROL => {
+            (model, Cmd::pure(Msg::Quit))
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            let next_msg = navigation_cmd(&model.state, NavigationMessage::Down);
+            (model, next_msg)
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            let next_msg = navigation_cmd(&model.state, NavigationMessage::Up);
+            (model, next_msg)
+        }
+        KeyCode::Char('l') => {
+            let next_msg = match model.state {
+                State::MissionExecution(_) => {
+                    Cmd::pure(Msg::MissionExecution(MissionExecutionMessage::SafeLand))
+                }
+                _ => Cmd::none(),
+            };
+            (model, next_msg)
+        }
+        KeyCode::Char('x') => {
+            let next_msg = match model.state {
+                State::MissionExecution(_) => Cmd::pure(Msg::MissionExecution(
+                    MissionExecutionMessage::EmergencyAbort,
+                )),
+                _ => Cmd::none(),
+            };
+            (model, next_msg)
+        }
+        KeyCode::Enter => {
+            let next_msg = navigation_cmd(&model.state, NavigationMessage::Select);
+            (model, next_msg)
+        }
+        _ => (model, Cmd::none()),
+    }
+}
+
+fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
+    match state {
+        State::Home(_) => Cmd::pure(Msg::Home(nav)),
+        State::MissionSelect(_) => Cmd::pure(Msg::MissionSelect(MissionSelectMessage::Nav(nav))),
+        _ => Cmd::none(),
     }
 }
