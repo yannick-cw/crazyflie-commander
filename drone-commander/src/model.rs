@@ -3,9 +3,9 @@ use drone_control::flight_paths::{
     body_frame_smooth, haus_nikolaus, lawn_mower, orbit, smooth_curves,
 };
 use drone_control::{Abort, Command, Telemetry};
-use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Model {
     pub telemetry: Telemetry,
     pub exit: bool,
@@ -22,7 +22,7 @@ impl Default for Model {
         }
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum State {
     Home(HomeState),
     MissionExecution(MissionExecutionState),
@@ -33,19 +33,19 @@ pub enum State {
     FreeFlight(),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MissionExecutionState {
     pub mission: Vec<Command>,
     pub name: String,
-    pub abort_sender: Option<mpsc::Sender<Abort>>,
+    pub abort_sender: Option<oneshot::Sender<Abort>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct HomeState {
     pub selected_mode: ModeSelection,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ModeSelection {
     MissionSelectItem,
     MissionPlanItem,
@@ -69,7 +69,7 @@ impl ModeSelection {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MissionSelectState {
     pub missions: Vec<(String, Vec<Command>)>,
     pub selection: usize,

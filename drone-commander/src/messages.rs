@@ -1,5 +1,4 @@
-use crate::model::MissionExecutionState;
-use drone_control::Telemetry;
+use drone_control::{Command, Telemetry};
 use ratatui::crossterm::event::KeyEvent;
 
 #[derive(Clone, Debug)]
@@ -17,7 +16,7 @@ pub enum Msg {
 #[derive(Clone, Debug)]
 pub enum MissionSelectMessage {
     Nav(NavigationMessage),
-    Selected(MissionExecutionState),
+    Selected(Vec<Command>, String),
 }
 
 #[derive(Clone, Debug)]
@@ -25,7 +24,7 @@ pub enum MissionExecutionMessage {
     StartMission,
     MissionResult,
     SafeLand,
-    EmergencyAbort
+    EmergencyAbort,
 }
 
 #[derive(Clone, PartialEq, Copy, Debug)]

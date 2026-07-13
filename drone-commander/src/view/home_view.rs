@@ -44,7 +44,7 @@ pub fn view(model: &HomeState, frame: &mut Frame) {
 
     let mut lines: Vec<Line> = modes
         .iter()
-        .map(|&(mode, name)| selectable(name, mode == model.selected_mode))
+        .map(|&(ref mode, name)| selectable(name, *mode == model.selected_mode))
         .collect();
 
     // one-line description of the highlighted mode
