@@ -1,11 +1,13 @@
-use crate::control::command_unit::{Abort, Command, CommandUnit, MissionStatus, Telemetry};
+use crate::control::command_unit::{
+    Abort, Command, CommandUnit, MissionStatus, MotionCommand, SetpointHover, Telemetry,
+};
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
-use crate::{Meters, MetersPerSecond, Progress, Reason};
+use crate::{Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use futures::{Stream, StreamExt};
@@ -168,21 +170,6 @@ impl CrazyflieCommandUnit {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct SetpointRelative {
-    pub vx: MetersPerSecond,
-    pub vy: MetersPerSecond,
-    pub z: Meters,
-    pub yaw_rate: f32,
-}
-#[derive(Copy, Clone, Debug)]
-pub enum MotionCommand {
-    TakeOff(Meters),
-    Move(SetpointRelative),
-    Land,
-    Stop,
-}
-
 impl CommandUnit for CrazyflieCommandUnit {
     async fn run_mission(
         &self,
@@ -221,7 +208,7 @@ impl CommandUnit for CrazyflieCommandUnit {
         let mut telemetry_rx = self.autopilot.telemetry.clone();
         let mut ticks = time::interval(Duration::from_millis(10));
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        let mut last_setpoint: Option<SetpointRelative> = None;
+        let mut last_setpoint: Option<SetpointHover> = None;
 
         loop {
             select! {

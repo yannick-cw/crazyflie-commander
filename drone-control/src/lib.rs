@@ -2,12 +2,10 @@ mod control;
 mod utils;
 
 pub use control::command_unit::{
-    Abort, Command, CommandUnit, Meters, MetersPerSecond, MissionStatus, Progress, Reason,
-    Telemetry,
+    Abort, Command, CommandUnit, Meters, MetersPerSecond, MissionStatus, MotionCommand, Progress,
+    Reason, SetpointHover, Telemetry,
 };
 pub use control::crazyflie::CrazyflieCommandUnit;
-pub use control::crazyflie::MotionCommand;
-pub use control::crazyflie::SetpointRelative;
 pub use control::crazyflie::setup_link;
 pub use utils::errors;
 pub use utils::flight_paths;

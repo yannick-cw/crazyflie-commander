@@ -1,5 +1,5 @@
 use crate::control::command_unit::{Meters, Telemetry};
-use crate::control::crazyflie::SetpointRelative;
+use crate::control::command_unit::SetpointHover;
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
@@ -98,12 +98,12 @@ impl Vehicle {
 
     pub async fn send_relative_speed(
         &self,
-        SetpointRelative {
+        SetpointHover {
             vx,
             vy,
             yaw_rate,
             z,
-        }: SetpointRelative,
+        }: SetpointHover,
     ) -> Res<()> {
         self.cf
             .commander

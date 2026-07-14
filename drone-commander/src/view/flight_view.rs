@@ -34,15 +34,30 @@ pub fn view(model: &Model, frame: &mut Frame) {
     let show_back =
         matches!(mission, Some(s) if !matches!(s.mission_status, MissionStatus::Running(_)));
 
-    let keys: Vec<(&str, &str, Color)> = [
-        Some(("x", "EMERGENCY STOP", DANGER)),
-        Some(("l", "LAND", WARN)),
-        show_back.then_some(("b", "back to menu", SELECTED)),
-        Some(("q", "quit", LABEL)),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    let keys: Vec<(&str, &str, Color)> = match &model.state {
+        // free flight has its own control scheme
+        State::FreeFlight(s) => [
+            Some(("wasd", "move", BRAND)),
+            Some(("←→", "yaw", BRAND)),
+            (!s.is_airborne).then_some(("t", "take off", SELECTED)),
+            s.is_airborne.then_some(("l", "land", WARN)),
+            Some(("x", "STOP", DANGER)),
+            Some(("b", "back", WARN)),
+            Some(("q", "quit", LABEL)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+        _ => [
+            Some(("x", "EMERGENCY STOP", DANGER)),
+            Some(("l", "LAND", WARN)),
+            show_back.then_some(("b", "back to menu", SELECTED)),
+            Some(("q", "quit", LABEL)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+    };
 
     let shell = shell(controls(&keys));
     let inner = shell.inner(area);

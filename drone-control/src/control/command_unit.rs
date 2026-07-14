@@ -1,4 +1,3 @@
-use crate::control::crazyflie::MotionCommand;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
@@ -193,6 +192,22 @@ impl Telemetry {
     pub fn speed(&self) -> f32 {
         (self.x_v.0.powi(2) + self.y_v.0.powi(2)).sqrt()
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SetpointHover {
+    pub vx: MetersPerSecond,
+    pub vy: MetersPerSecond,
+    pub z: Meters,
+    pub yaw_rate: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum MotionCommand {
+    TakeOff(Meters),
+    Move(SetpointHover),
+    Land,
+    Stop,
 }
 
 #[allow(async_fn_in_trait)]

@@ -2,14 +2,14 @@ use crate::messages::FreeFlightMessage::CommandSet;
 use crate::messages::{
     FreeFlightMessage, MissionExecutionMessage, MissionSelectMessage, Msg, NavigationMessage,
 };
-use crate::model::Movement::{Land, Start};
+use crate::model::Movement::{Land, Start, Vx, Vy, YawRate};
 use crate::model::{
     FreeFlightState, HomeState, MissionExecutionState, MissionSelectState, ModeSelection, Model,
     Movement, State,
 };
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use drone_control::Meters;
-use drone_control::{Abort, CommandUnit, MetersPerSecond, MotionCommand, SetpointRelative};
+use drone_control::{Abort, CommandUnit, MetersPerSecond, MotionCommand, SetpointHover};
 use ratatea::Cmd;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -225,7 +225,7 @@ fn update_free_flight(
             let yaw_rate = model.yaw_rate;
             Cmd::new(
                 async move {
-                    sender.send(MotionCommand::Move(SetpointRelative {
+                    sender.send(MotionCommand::Move(SetpointHover {
                         vx,
                         vy,
                         z,
@@ -249,6 +249,27 @@ fn update_free_flight(
             model.is_airborne = true;
             Cmd::none()
         }
+    }
+}
+
+fn movement_from_key(k: KeyEvent, s: &FreeFlightState) -> Option<Movement> {
+    let one_ms = MetersPerSecond(1.0);
+    let zero_ms = MetersPerSecond(0.0);
+    let yaw_rate = 150.0;
+    match (k.code, k.kind) {
+        (KeyCode::Char('w'), KeyEventKind::Press) if s.vx <= zero_ms => Some(Vx(one_ms)),
+        (KeyCode::Char('w'), KeyEventKind::Release) => Some(Vx(zero_ms)),
+        (KeyCode::Char('a'), KeyEventKind::Press) if s.vy <= zero_ms => Some(Vy(one_ms)),
+        (KeyCode::Char('a'), KeyEventKind::Release) => Some(Vy(zero_ms)),
+        (KeyCode::Char('s'), KeyEventKind::Press) if s.vx >= zero_ms => Some(Vx(-one_ms)),
+        (KeyCode::Char('s'), KeyEventKind::Release) => Some(Vx(zero_ms)),
+        (KeyCode::Char('d'), KeyEventKind::Press) if s.vy >= zero_ms => Some(Vy(-one_ms)),
+        (KeyCode::Char('d'), KeyEventKind::Release) => Some(Vy(zero_ms)),
+        (KeyCode::Left, KeyEventKind::Press) => Some(YawRate(yaw_rate)),
+        (KeyCode::Right, KeyEventKind::Press) => Some(YawRate(-yaw_rate)),
+        (KeyCode::Left, KeyEventKind::Release) => Some(YawRate(0.0)),
+        (KeyCode::Right, KeyEventKind::Release) => Some(YawRate(0.0)),
+        _ => None,
     }
 }
 
@@ -292,7 +313,7 @@ fn update_key_evt(key_event: KeyEvent, model: &Model) -> Cmd<Msg> {
             | k.is_right() =>
         {
             match &model.state {
-                State::FreeFlight(s) => Movement::from_key_evt(key_event, s)
+                State::FreeFlight(s) => movement_from_key(key_event, s)
                     .map(|m| Cmd::pure(Msg::FreeFlight(FreeFlightMessage::Move(m))))
                     .unwrap_or(Cmd::none()),
                 _ => Cmd::none(),
