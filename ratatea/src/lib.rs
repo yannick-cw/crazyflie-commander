@@ -95,7 +95,8 @@ pub trait Ratatea {
 
 pub async fn run<P: Ratatea>(p: P) -> color_eyre::Result<()> {
     let mut terminal = ratatui::init();
-    if terminal::supports_keyboard_enhancement()? {
+    let supports_enhancements = terminal::supports_keyboard_enhancement()?;
+    if supports_enhancements {
         execute!(
             stdout(),
             PushKeyboardEnhancementFlags(
@@ -104,7 +105,7 @@ pub async fn run<P: Ratatea>(p: P) -> color_eyre::Result<()> {
             )
         )?
     };
-    // } ratatui::restore(), execute!(stdout(), PopKeyboardEnhancementFlags) — but on
+
     let (mut model, init_cmd) = p.init();
     let mut in_flight: FuturesUnordered<_> = init_cmd.into_iter().collect();
 
@@ -135,7 +136,7 @@ pub async fn run<P: Ratatea>(p: P) -> color_eyre::Result<()> {
         }
     }
 
-    if terminal::supports_keyboard_enhancement()? {
+    if supports_enhancements {
         execute!(stdout(), PopKeyboardEnhancementFlags)?
     };
     ratatui::restore();

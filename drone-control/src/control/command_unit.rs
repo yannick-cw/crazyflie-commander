@@ -1,7 +1,7 @@
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
-use derive_more::{Add, Div, Mul, Neg, Sub};
+use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use futures::Stream;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
@@ -21,7 +21,9 @@ impl Display for Meters {
     }
 }
 
-#[derive(Debug, Neg, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul)]
+#[derive(
+    Debug, Neg, Clone, Copy, PartialEq, PartialOrd, Default, Add, AddAssign, SubAssign, Sub, Mul,
+)]
 pub struct MetersPerSecond(pub f32);
 impl Display for MetersPerSecond {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

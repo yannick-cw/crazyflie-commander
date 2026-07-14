@@ -10,7 +10,7 @@ use ratatui::{
     },
 };
 
-use crate::model::{MissionExecutionState, Model, State};
+use crate::model::{FreeFlightState, MissionExecutionState, Model, State};
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
 use drone_control::{Command, Meters, MissionStatus, Telemetry};
@@ -21,6 +21,8 @@ use drone_control::{Command, Meters, MissionStatus, Telemetry};
 const MAX_SPEED: f32 = 2.5;
 /// Side length of the square top-down map viewport, in metres (takeoff origin at bottom-right).
 const MAP_M: f64 = 2.0;
+/// Speed setting (m/s) that maps to a full speed-setting gauge.
+const MAX_SPEED_SETTING: f32 = 2.0;
 
 pub fn view(model: &Model, frame: &mut Frame) {
     let t = &model.telemetry;
@@ -83,7 +85,10 @@ pub fn view(model: &Model, frame: &mut Frame) {
     ])
     .areas(side);
 
-    frame.render_widget(mission_bar(mission), mission_area);
+    match &model.state {
+        State::FreeFlight(s) => frame.render_widget(free_flight_bar(s), mission_area),
+        _ => frame.render_widget(mission_bar(mission), mission_area),
+    }
     frame.render_widget(map(t, mission), map_area);
     frame.render_widget(position_panel(t), pos_area);
     frame.render_widget(velocity_panel(t), vel_area);
@@ -117,6 +122,17 @@ fn mission_bar(mission: Option<&MissionExecutionState>) -> Gauge<'static> {
         .gauge_style(Style::new().fg(color))
         .ratio(ratio.clamp(0.0, 1.0))
         .label(label)
+}
+
+/// Free-flight top bar: airborne status + the current speed-setting as a gauge.
+fn free_flight_bar(s: &FreeFlightState) -> Gauge<'static> {
+    let setting = s.speed_setting.0;
+    let status = if s.is_airborne { "airborne" } else { "grounded" };
+    Gauge::default()
+        .block(panel(" FREE FLIGHT · SPEED "))
+        .gauge_style(Style::new().fg(BRAND))
+        .ratio((setting / MAX_SPEED_SETTING).clamp(0.0, 1.0) as f64)
+        .label(format!("{status} · {setting:.1} m/s"))
 }
 
 /// Top-down braille map: the planned route (every waypoint, the current one highlighted)

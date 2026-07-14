@@ -6,3 +6,4 @@ target/
 .rust-rover/
 proptest-regressions/
 scala-rust-cheatsheet.md
+logs/

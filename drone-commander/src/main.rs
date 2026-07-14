@@ -9,6 +9,7 @@ use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub, run};
 use ratatui::prelude::*;
 use tokio_stream::wrappers::WatchStream;
+use tracing::info;
 
 mod dev_unit;
 pub mod messages;
@@ -18,6 +19,13 @@ mod view;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
+    let file_appender = tracing_appender::rolling::never("./logs", "commander.log");
+    tracing_subscriber::fmt()
+        .with_writer(file_appender)
+        .with_ansi(false)
+        .init();
+
+    info!("Starting up....");
     Ok(match setup_link().await {
         Ok(real_unit) => {
             // selection process
@@ -101,10 +109,14 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 // - [x] render position in x y z
 // - [x] build free flight; wasd, QE for yaw, jk for up down
 //       - first step auto take off + w for flying forwards
+// - [x] show logs in ~~log window~~ or write to file
 // ---- NEXT
 // - [ ] back from free flight
 // --- NEXT
+// - [ ] x in free flight must interrupt all!
+// - [ ] ratatea re-evaluate subscriptions
+// - [ ] speed up down modification in flight
+// - [ ] recording live flight and replay?
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] "connection lost" warning or whatever when unplugged
-// - [ ] show logs in log window or write to file
 // - [ ] build mission planner

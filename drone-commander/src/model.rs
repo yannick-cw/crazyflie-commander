@@ -40,6 +40,8 @@ pub enum Movement {
     YawRate(f32),
     Land,
     Start,
+    SpeedUp,
+    SpeedDown,
 }
 
 #[derive(Debug)]
@@ -50,6 +52,8 @@ pub struct FreeFlightState {
     pub z: Meters,
     pub motion_sender: mpsc::UnboundedSender<MotionCommand>,
     pub is_airborne: bool,
+    pub speed_setting: MetersPerSecond,
+    pub yaw_rate_setting: f32,
 }
 
 #[derive(Debug)]

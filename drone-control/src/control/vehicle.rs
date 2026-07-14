@@ -1,5 +1,5 @@
-use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::command_unit::SetpointHover;
+use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
@@ -133,12 +133,12 @@ impl Vehicle {
             Meters(0.0),
             Meters(0.5),
             0.0,
-            Duration::from_secs(3),
+            Duration::from_secs(2),
             false,
             false,
         )
         .await?;
-        self.land(Duration::from_secs(3)).await?;
+        self.land(Duration::from_millis(2050)).await?;
         Ok(())
     }
 
