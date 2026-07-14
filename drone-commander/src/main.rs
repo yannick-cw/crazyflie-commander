@@ -57,7 +57,7 @@ impl<U: CommandUnit> Ratatea for Program<U> {
             State::MissionExecution(_) => flight_view::view(model, frame),
             State::MissionSelect(s) => mission_select_view::view(s, frame),
             State::MissionPlan() => {}
-            State::FreeFlight() => flight_view::view(model, frame),
+            State::FreeFlight(_) => flight_view::view(model, frame),
         };
     }
 
@@ -99,9 +99,12 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 // - [x] add mission state to telemetry and display + progress
 // - [ ] give real time and steps estimates? - Wont do
 // - [x] render position in x y z
-// ----
+// - [x] build free flight; wasd, QE for yaw, jk for up down
+//       - first step auto take off + w for flying forwards
+// ---- NEXT
+// - [ ] back from free flight
+// --- NEXT
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] "connection lost" warning or whatever when unplugged
 // - [ ] show logs in log window or write to file
-// - [ ] build free flight; wasd, QE for yaw, jk for up down
 // - [ ] build mission planner

@@ -5,13 +5,15 @@ use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
-use crate::{Progress, Reason};
+use crate::{Meters, MetersPerSecond, Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
-use tokio::select;
+use futures::{Stream, StreamExt};
+use std::time::Duration;
 use tokio::sync::watch::Receiver;
 use tokio::sync::{broadcast, watch};
-use tokio::time::sleep;
+use tokio::time::{MissedTickBehavior, sleep};
+use tokio::{select, time};
 use tracing::info;
 
 pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
@@ -23,6 +25,11 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
         .ok_or(FailedToConnect("Did not find crazyflie".to_string()))?;
 
     let cf = Crazyflie::connect_from_uri(&link_context, uri, crazyflie_lib::NoTocCache).await?;
+
+    // Reset the x,y,z,yaw estimated values before a new flight
+    cf.param.set_lossy("kalman.resetEstimation", 1.0).await?;
+    sleep(Duration::from_millis(50)).await;
+    cf.param.set_lossy("kalman.resetEstimation", 0.0).await?;
 
     let mut log_block_telemetry = cf.log.create_block().await?;
     let mut log_stream_battery = cf.log.create_block().await?;
@@ -89,7 +96,6 @@ impl CrazyflieCommandUnit {
     async fn start_mission(&self, mission: Vec<Command>) -> Res<()> {
         let vehicle = &self.autopilot;
 
-        vehicle.reset_estimator().await?;
         let total_commands = mission.len();
 
         for (i, command) in mission.into_iter().enumerate() {
@@ -162,6 +168,21 @@ impl CrazyflieCommandUnit {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct SetpointRelative {
+    pub vx: MetersPerSecond,
+    pub vy: MetersPerSecond,
+    pub z: Meters,
+    pub yaw_rate: f32,
+}
+#[derive(Copy, Clone, Debug)]
+pub enum MotionCommand {
+    TakeOff(Meters),
+    Move(SetpointRelative),
+    Land,
+    Stop,
+}
+
 impl CommandUnit for CrazyflieCommandUnit {
     async fn run_mission(
         &self,
@@ -192,6 +213,60 @@ impl CommandUnit for CrazyflieCommandUnit {
                     .unwrap();
             }
         })
+    }
+
+    async fn fly(&self, commands: impl Stream<Item = MotionCommand>) -> Res<()> {
+        tokio::pin!(commands);
+
+        let mut telemetry_rx = self.autopilot.telemetry.clone();
+        let mut ticks = time::interval(Duration::from_millis(10));
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut last_setpoint: Option<SetpointRelative> = None;
+
+        loop {
+            select! {
+                // in case we do not have something new from the stream
+                // we repeat the last setpoint motion
+                _ = ticks.tick() => {
+                    match last_setpoint {
+                        None => {}
+                        Some(s) => {
+                            self.autopilot.send_relative_speed(s).await?;
+                        }}
+                },
+                _ = telemetry_rx.wait_for(Telemetry::is_low_bat) => {
+                    info!("Low battery - returning home");
+                    self.autopilot.return_home().await?;
+                    break;
+                },
+                maybe_motion = commands.next() => match maybe_motion {
+                    //stream ended - land
+                    None => {
+                        self.autopilot.return_home().await?;
+                        // free flight over - stopping
+                        break;
+                    }
+                    Some(MotionCommand::Land) => {
+                        last_setpoint = None;
+                        self.autopilot.return_home().await?;
+                    }
+                    Some(MotionCommand::TakeOff(z) )=> {
+                        last_setpoint = None;
+                        self.autopilot.take_off(z, Duration::from_secs(2)).await?;
+                    }
+                    Some(MotionCommand::Move(setpoint)) => {
+                        last_setpoint = Some(setpoint);
+                        self.autopilot.send_relative_speed(setpoint).await?;
+                    }
+                    Some(MotionCommand::Stop) => {
+                        self.autopilot.emergency_stop().await?;
+                        // free flight over - stopping
+                        break;
+                    }
+                },
+            }
+        }
+        Ok(())
     }
 
     fn telemetry(&self) -> broadcast::Receiver<Telemetry> {

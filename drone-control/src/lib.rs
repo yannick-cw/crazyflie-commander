@@ -6,6 +6,8 @@ pub use control::command_unit::{
     Telemetry,
 };
 pub use control::crazyflie::CrazyflieCommandUnit;
+pub use control::crazyflie::MotionCommand;
+pub use control::crazyflie::SetpointRelative;
 pub use control::crazyflie::setup_link;
 pub use utils::errors;
 pub use utils::flight_paths;

@@ -2,8 +2,8 @@ use crate::model::State::Home;
 use drone_control::flight_paths::{
     body_frame_smooth, haus_nikolaus, lawn_mower, orbit, smooth_curves,
 };
-use drone_control::{Abort, Command, Telemetry};
-use tokio::sync::oneshot;
+use drone_control::{Abort, Command, Meters, MetersPerSecond, MotionCommand, Telemetry};
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
 pub struct Model {
@@ -30,7 +30,26 @@ pub enum State {
     MissionSelect(MissionSelectState),
     MissionPlan(),
     // this will go to "current" observe only for now
-    FreeFlight(),
+    FreeFlight(FreeFlightState),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Movement {
+    Vx(MetersPerSecond),
+    Vy(MetersPerSecond),
+    YawRate(f32),
+    Land,
+    Start,
+}
+
+#[derive(Debug)]
+pub struct FreeFlightState {
+    pub vx: MetersPerSecond,
+    pub vy: MetersPerSecond,
+    pub yaw_rate: f32,
+    pub z: Meters,
+    pub motion_sender: mpsc::UnboundedSender<MotionCommand>,
+    pub is_airborne: bool,
 }
 
 #[derive(Debug)]

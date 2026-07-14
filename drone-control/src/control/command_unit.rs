@@ -1,7 +1,9 @@
+use crate::control::crazyflie::MotionCommand;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
-use derive_more::{Add, Div, Mul, Sub};
+use derive_more::{Add, Div, Mul, Neg, Sub};
+use futures::Stream;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
@@ -20,7 +22,7 @@ impl Display for Meters {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul)]
+#[derive(Debug, Neg, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul)]
 pub struct MetersPerSecond(pub f32);
 impl Display for MetersPerSecond {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -200,6 +202,7 @@ pub trait CommandUnit {
         mission: Vec<Command>,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()>;
+    async fn fly(&self, commands: impl Stream<Item = MotionCommand>) -> Res<()>;
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
     fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
     fn mission_status(&self) -> watch::Receiver<MissionStatus>;

@@ -1,4 +1,5 @@
 use crate::control::command_unit::{Meters, Telemetry};
+use crate::control::crazyflie::SetpointRelative;
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
@@ -19,19 +20,6 @@ impl Vehicle {
     }
     pub fn latest_telemetry(&self) -> Telemetry {
         *self.telemetry.borrow()
-    }
-    pub async fn reset_estimator(&self) -> Res<()> {
-        // Reset the x,y,z,yaw estimated values before a new flight
-        self.cf
-            .param
-            .set_lossy("kalman.resetEstimation", 1.0)
-            .await?;
-        sleep(Duration::from_millis(50)).await;
-        self.cf
-            .param
-            .set_lossy("kalman.resetEstimation", 0.0)
-            .await?;
-        Ok(())
     }
 
     pub async fn take_off(&self, height: Meters, duration: Duration) -> Res<()> {
@@ -105,6 +93,22 @@ impl Vehicle {
                     .await?;
             }
         }
+        Ok(())
+    }
+
+    pub async fn send_relative_speed(
+        &self,
+        SetpointRelative {
+            vx,
+            vy,
+            yaw_rate,
+            z,
+        }: SetpointRelative,
+    ) -> Res<()> {
+        self.cf
+            .commander
+            .setpoint_hover(vx.0, vy.0, yaw_rate, z.0)
+            .await?;
         Ok(())
     }
 

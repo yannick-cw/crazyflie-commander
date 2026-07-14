@@ -1,5 +1,6 @@
 use drone_control::errors::Res;
 use drone_control::{Abort, Command, CommandUnit, Meters, MetersPerSecond, Telemetry};
+use futures::Stream;
 use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::watch;
@@ -17,6 +18,10 @@ impl CommandUnit for DevUnit {
             _ = sleep(Duration::from_secs(5))=> {},
             Some(_) = abort_signal=> {},
         })
+    }
+
+    async fn fly(&self, _commands: impl Stream<Item = drone_control::MotionCommand>) -> Res<()> {
+        Ok(())
     }
 
     fn telemetry(&self) -> Receiver<Telemetry> {

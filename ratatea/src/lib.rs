@@ -1,8 +1,13 @@
-use crossterm::event::{Event, EventStream};
+use crossterm::event::{
+    Event, EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
+use crossterm::{execute, terminal};
 use futures::future::LocalBoxFuture;
 use futures::stream::{FuturesUnordered, LocalBoxStream, select_all};
 use futures::{FutureExt, StreamExt};
 use ratatui::Frame;
+use std::io::stdout;
 use tokio::select;
 
 pub struct Cmd<Msg>(Vec<LocalBoxFuture<'static, Msg>>);
@@ -76,6 +81,8 @@ pub trait Ratatea {
     fn init(&self) -> (Self::Model, Cmd<Self::Msg>);
     fn update(&self, msg: Self::Msg, model: Self::Model) -> (Self::Model, Cmd<Self::Msg>);
     fn view(&self, model: &Self::Model, frame: &mut Frame);
+
+    // for now subscriptions are only called once on start - not when the model changes
     fn subscriptions(&self, model: &Self::Model) -> Sub<Self::Msg>;
 
     fn exit_condition(&self, _model: &Self::Model) -> bool {
@@ -88,9 +95,20 @@ pub trait Ratatea {
 
 pub async fn run<P: Ratatea>(p: P) -> color_eyre::Result<()> {
     let mut terminal = ratatui::init();
+    if terminal::supports_keyboard_enhancement()? {
+        execute!(
+            stdout(),
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                    | KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES,
+            )
+        )?
+    };
+    // } ratatui::restore(), execute!(stdout(), PopKeyboardEnhancementFlags) — but on
     let (mut model, init_cmd) = p.init();
     let mut in_flight: FuturesUnordered<_> = init_cmd.into_iter().collect();
 
+    // todo re evaluate subs and activate / deactivate (could change on model change)
     let mut subs = select_all(p.subscriptions(&model));
 
     let mut event_stream = EventStream::new();
@@ -116,6 +134,10 @@ pub async fn run<P: Ratatea>(p: P) -> color_eyre::Result<()> {
             terminal.draw(|frame| p.view(&model, frame))?;
         }
     }
+
+    if terminal::supports_keyboard_enhancement()? {
+        execute!(stdout(), PopKeyboardEnhancementFlags)?
+    };
     ratatui::restore();
     Ok(())
 }
