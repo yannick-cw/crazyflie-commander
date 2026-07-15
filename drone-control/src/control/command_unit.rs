@@ -209,6 +209,7 @@ pub enum MotionCommand {
     TakeOff(Meters),
     Move(SetpointHover),
     Land,
+    GoHome,
     Stop,
 }
 

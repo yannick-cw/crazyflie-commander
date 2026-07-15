@@ -43,6 +43,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
             Some(("←→", "yaw", BRAND)),
             (!s.is_airborne).then_some(("t", "take off", SELECTED)),
             s.is_airborne.then_some(("l", "land", WARN)),
+            s.is_airborne.then_some(("h", "go home", WARN)),
             Some(("x", "STOP", DANGER)),
             Some(("b", "back", WARN)),
             Some(("q", "quit", LABEL)),

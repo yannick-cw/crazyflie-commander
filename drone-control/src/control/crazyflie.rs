@@ -251,7 +251,10 @@ impl CommandUnit for CrazyflieCommandUnit {
                         // free flight over - stopping
                         break;
                     }
-                },
+                    Some(MotionCommand::GoHome) => {
+                        last_setpoint = None;
+                        self.autopilot.return_home().await?;
+                    }},
             }
         }
         Ok(())

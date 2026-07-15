@@ -39,6 +39,7 @@ pub enum Movement {
     Vy(MetersPerSecond),
     YawRate(f32),
     Land,
+    GoHome,
     Start,
     SpeedUp,
     SpeedDown,

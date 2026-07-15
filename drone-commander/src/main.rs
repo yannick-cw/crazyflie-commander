@@ -111,10 +111,10 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 //       - first step auto take off + w for flying forwards
 // - [x] show logs in ~~log window~~ or write to file
 // - [x] speed up down modification in flight
+// - [x] back from free flight < broken does not finish flying somehow - must make sure to end flying future
+// - [x] landing in free flight in place + go home?
 // ---- NEXT
-// - [ ] back from free flight < broken does not finish flying somehow - must make sure to end flying future
 // --- NEXT
-// - [ ] landing in free flight in place + go home?
 // - [ ] x in free flight must interrupt all!
 // - [ ] ratatea re-evaluate subscriptions
 // - [ ] recording live flight and replay?

@@ -2,7 +2,7 @@ use crate::messages::FreeFlightMessage::CommandSet;
 use crate::messages::{
     FreeFlightMessage, MissionExecutionMessage, MissionSelectMessage, Msg, NavigationMessage,
 };
-use crate::model::Movement::{Land, SpeedDown, SpeedUp, Start, Vx, Vy, YawRate};
+use crate::model::Movement::{GoHome, Land, SpeedDown, SpeedUp, Start, Vx, Vy, YawRate};
 use crate::model::{
     FreeFlightState, HomeState, MissionExecutionState, MissionSelectState, ModeSelection, Model,
     Movement, State,
@@ -211,6 +211,15 @@ fn update_free_flight(
                 CommandSet
             })
         }
+        FreeFlightMessage::Move(GoHome) => {
+            model.vx = MetersPerSecond(0.0);
+            model.vy = MetersPerSecond(0.0);
+            model.z = Meters(0.0);
+            model.is_airborne = false;
+            Cmd::new(async move { sender.send(MotionCommand::GoHome) }, |_| {
+                CommandSet
+            })
+        }
         FreeFlightMessage::Move(Start) => {
             model.vx = MetersPerSecond(0.0);
             model.vy = MetersPerSecond(0.0);
@@ -277,6 +286,7 @@ fn movement_from_key(k: KeyEvent, s: &FreeFlightState) -> Option<Movement> {
         (KeyCode::Char('s'), KeyEventKind::Release) => Some(Vx(zero_ms)),
         (KeyCode::Char('d'), KeyEventKind::Press) if s.vy >= zero_ms => Some(Vy(-axis_speed)),
         (KeyCode::Char('d'), KeyEventKind::Release) => Some(Vy(zero_ms)),
+        (KeyCode::Char('h'), KeyEventKind::Press) => Some(GoHome),
         (KeyCode::Left, KeyEventKind::Press) => Some(YawRate(yaw_rate)),
         (KeyCode::Right, KeyEventKind::Press) => Some(YawRate(-yaw_rate)),
         (KeyCode::Left, KeyEventKind::Release) => Some(YawRate(0.0)),
@@ -290,7 +300,7 @@ fn movement_from_key(k: KeyEvent, s: &FreeFlightState) -> Option<Movement> {
 fn update_key_evt(key_event: KeyEvent, model: &Model) -> Cmd<Msg> {
     match key_event.code {
         // movement keys in flight mode
-        k if ['w', 'a', 's', 'd'].into_iter().any(|c| k.is_char(c))
+        k if ['w', 'a', 's', 'd', 'h'].into_iter().any(|c| k.is_char(c))
             | k.is_left()
             | k.is_right()
             | k.is_down()
