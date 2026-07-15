@@ -7,12 +7,11 @@ use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
-use crate::{Progress, Reason};
+use crate::{MetersPerSecond, Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use futures::{Stream, StreamExt};
 use std::time::Duration;
-use tokio::sync::watch::Receiver;
 use tokio::sync::{broadcast, watch};
 use tokio::time::{MissedTickBehavior, sleep};
 use tokio::{select, time};
@@ -229,17 +228,19 @@ impl CommandUnit for CrazyflieCommandUnit {
                 maybe_motion = commands.next() => match maybe_motion {
                     //stream ended - land
                     None => {
-                        self.autopilot.return_home().await?;
+                        if last_setpoint.is_some() {
+                            self.autopilot.return_home().await?;
+                        }
                         // free flight over - stopping
                         break;
                     }
                     Some(MotionCommand::Land) => {
                         last_setpoint = None;
-                        self.autopilot.return_home().await?;
+                        self.autopilot.land(Duration::from_secs(2)).await?;
                     }
                     Some(MotionCommand::TakeOff(z) )=> {
-                        last_setpoint = None;
                         self.autopilot.take_off(z, Duration::from_secs(2)).await?;
+                        last_setpoint = Some(SetpointHover { vx: MetersPerSecond(0.0),vy: MetersPerSecond(0.0),z,yaw_rate: 0.0, });
                     }
                     Some(MotionCommand::Move(setpoint)) => {
                         last_setpoint = Some(setpoint);
@@ -264,7 +265,7 @@ impl CommandUnit for CrazyflieCommandUnit {
         self.telemetry_latest.subscribe()
     }
 
-    fn mission_status(&self) -> Receiver<MissionStatus> {
+    fn mission_status(&self) -> watch::Receiver<MissionStatus> {
         self.mission_status.subscribe()
     }
 }

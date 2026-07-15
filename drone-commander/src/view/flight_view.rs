@@ -19,8 +19,8 @@ use drone_control::{Command, Meters, MissionStatus, Telemetry};
 
 /// Speed (m/s) that maps to a full gauge / "hot" colour.
 const MAX_SPEED: f32 = 2.5;
-/// Side length of the square top-down map viewport, in metres (takeoff origin at bottom-right).
-const MAP_M: f64 = 2.0;
+/// Half-extent of the square top-down map viewport, in metres (takeoff origin centred → 3x3 m).
+const MAP_M: f64 = 1.5;
 /// Speed setting (m/s) that maps to a full speed-setting gauge.
 const MAX_SPEED_SETTING: f32 = 2.0;
 
@@ -141,14 +141,14 @@ fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
     let drone = (t.x() as f64, t.y() as f64);
     let route = mission.map(|m| waypoints(&m.mission)).unwrap_or_default();
     let current = mission.and_then(current_index);
-    // top-down as seen by the pilot: origin (takeoff) at bottom-right,
+    // top-down as seen by the pilot: origin (takeoff) centred,
     // x (forward) grows up the screen, y (left) grows to the left
-    let tf = |(x, y): (f64, f64)| (MAP_M - y, x);
+    let tf = |(x, y): (f64, f64)| (-y, x);
     Canvas::default()
         .block(panel(" MAP "))
         .marker(Marker::Braille)
-        .x_bounds([0.0, MAP_M])
-        .y_bounds([0.0, MAP_M])
+        .x_bounds([-MAP_M, MAP_M])
+        .y_bounds([-MAP_M, MAP_M])
         .paint(move |ctx| {
             // every waypoint visible; the one being flown to is highlighted bigger + green
             for (i, &point) in route.iter().enumerate() {

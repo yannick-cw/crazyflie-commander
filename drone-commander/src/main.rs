@@ -110,13 +110,19 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 // - [x] build free flight; wasd, QE for yaw, jk for up down
 //       - first step auto take off + w for flying forwards
 // - [x] show logs in ~~log window~~ or write to file
+// - [x] speed up down modification in flight
 // ---- NEXT
-// - [ ] back from free flight
+// - [ ] back from free flight < broken does not finish flying somehow - must make sure to end flying future
 // --- NEXT
+// - [ ] landing in free flight in place + go home?
 // - [ ] x in free flight must interrupt all!
 // - [ ] ratatea re-evaluate subscriptions
-// - [ ] speed up down modification in flight
 // - [ ] recording live flight and replay?
+//      - r for record, r again for stop - show recording toggle
+//      - r collect all telemetry of actual position with 10ms resolution
+//      - store as json and just replay via low level setpoint commander
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] "connection lost" warning or whatever when unplugged
 // - [ ] build mission planner
+// - [ ] vehicle selection screen first? - just use CLI flag or default
+// - [ ] nix for bulding executable

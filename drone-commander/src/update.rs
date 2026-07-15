@@ -190,15 +190,15 @@ fn update_free_flight(
 ) -> Cmd<FreeFlightMessage> {
     let sender = model.motion_sender.clone();
     match msg {
-        FreeFlightMessage::Move(Movement::Vx(new_x)) => {
+        FreeFlightMessage::Move(Vx(new_x)) => {
             model.vx = new_x;
             Cmd::pure(FreeFlightMessage::SendNextMove)
         }
-        FreeFlightMessage::Move(Movement::Vy(new_y)) => {
+        FreeFlightMessage::Move(Vy(new_y)) => {
             model.vy = new_y;
             Cmd::pure(FreeFlightMessage::SendNextMove)
         }
-        FreeFlightMessage::Move(Movement::YawRate(yaw_rate)) => {
+        FreeFlightMessage::Move(YawRate(yaw_rate)) => {
             model.yaw_rate = yaw_rate;
             Cmd::pure(FreeFlightMessage::SendNextMove)
         }
