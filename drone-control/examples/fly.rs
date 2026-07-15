@@ -9,15 +9,6 @@ use std::future;
 #[tokio::main]
 async fn main() -> Res<()> {
     let real_unit = setup_link().await?;
-
-    // let mut receiver_telemetry = real_unit.telemetry();
-    // let render_loop = async {
-    //     let mut trace = PathTrace::new();
-    //     while let Ok(tele) = receiver_telemetry.recv().await {
-    //         render_telemetry(&tele, &mut trace);
-    //     }
-    // };
-    // let forever_render = render_loop.then(|_| pending());
     let mission = run_mission(orbit(), &real_unit);
 
     mission.await

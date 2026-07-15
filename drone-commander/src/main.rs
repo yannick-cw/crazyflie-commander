@@ -113,16 +113,24 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 // - [x] speed up down modification in flight
 // - [x] back from free flight < broken does not finish flying somehow - must make sure to end flying future
 // - [x] landing in free flight in place + go home?
+// - [ ] x in free flight must interrupt all! (won't do for now; only relevant for landing)
+// - [x] TUI stores missions as JSON and reads those on start; control exposes serde decode encode (maybe validation)
 // ---- NEXT
 // --- NEXT
-// - [ ] x in free flight must interrupt all!
+// - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
 // - [ ] recording live flight and replay?
 //      - r for record, r again for stop - show recording toggle
+//      - recording window goes to the right size in the column (e.g. red marker during recording)
 //      - r collect all telemetry of actual position with 10ms resolution
 //      - store as json and just replay via low level setpoint commander
+//      - but what if not in same position -> would accelarate to start point very fast -> easy go to start position
+//      => while ignoring z below 0.1m or min 0.1m, and only then, when hovering at start point -> go
+//      - could even blink LEDs before starting beep beep beeeeep and when last setpoint is below 0.1m or so land after
+//      - tui records libs telemetry for recording time and stores as json
+//      - lib gets new command::replay that takes a list of setpoints with timestamps or duration offsets from start and
+//      executes as normal thing as always <-> and lib gets the logic of slow fly to start and land or hover at finish
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] "connection lost" warning or whatever when unplugged
 // - [ ] build mission planner
-// - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] nix for bulding executable

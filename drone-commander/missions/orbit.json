@@ -1,0 +1,41 @@
+[
+  {
+    "Takeoff": {
+      "height": 0.5,
+      "duration": {
+        "secs": 2,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "Orbit": {
+      "radius": 0.7,
+      "orbital_period": {
+        "secs": 4,
+        "nanos": 0
+      },
+      "orbits": 5,
+      "z": 0.5
+    }
+  },
+  {
+    "MoveToWaypoint": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.5,
+      "duration": {
+        "secs": 2,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "Land": {
+      "duration": {
+        "secs": 2,
+        "nanos": 0
+      }
+    }
+  }
+]

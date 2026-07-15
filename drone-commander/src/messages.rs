@@ -17,6 +17,7 @@ pub enum Msg {
 
 #[derive(Clone, Debug)]
 pub enum MissionSelectMessage {
+    MissionsLoaded(Vec<(String, Vec<Command>)>),
     Nav(NavigationMessage),
     Selected(Vec<Command>, String),
 }

@@ -1,7 +1,4 @@
 use crate::model::State::Home;
-use drone_control::flight_paths::{
-    body_frame_smooth, haus_nikolaus, lawn_mower, orbit, smooth_curves,
-};
 use drone_control::{Abort, Command, Meters, MetersPerSecond, MotionCommand, Telemetry};
 use tokio::sync::{mpsc, oneshot};
 
@@ -102,13 +99,7 @@ pub struct MissionSelectState {
 impl Default for MissionSelectState {
     fn default() -> Self {
         MissionSelectState {
-            missions: vec![
-                ("nikolaus".to_string(), haus_nikolaus()),
-                ("orbit".to_string(), orbit()),
-                ("smooth".to_string(), smooth_curves()),
-                ("body smooth".to_string(), body_frame_smooth()),
-                ("lawn mower".to_string(), lawn_mower()),
-            ],
+            missions: Vec::new(),
             selection: 0,
         }
     }

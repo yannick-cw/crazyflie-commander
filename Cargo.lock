@@ -584,6 +584,7 @@ dependencies = [
  "futures",
  "ratatea",
  "ratatui",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tracing",

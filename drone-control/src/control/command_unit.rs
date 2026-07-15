@@ -3,6 +3,7 @@ use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
 use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use futures::Stream;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
@@ -13,7 +14,9 @@ pub enum Abort {
     Land,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul, Div)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul, Div,
+)]
 pub struct Meters(pub f32);
 impl Display for Meters {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -22,7 +25,20 @@ impl Display for Meters {
 }
 
 #[derive(
-    Debug, Neg, Clone, Copy, PartialEq, PartialOrd, Default, Add, AddAssign, SubAssign, Sub, Mul,
+    Serialize,
+    Deserialize,
+    Debug,
+    Neg,
+    Clone,
+    Copy,
+    PartialEq,
+    PartialOrd,
+    Default,
+    Add,
+    AddAssign,
+    SubAssign,
+    Sub,
+    Mul,
 )]
 pub struct MetersPerSecond(pub f32);
 impl Display for MetersPerSecond {
@@ -30,7 +46,7 @@ impl Display for MetersPerSecond {
         write!(f, "{}m/s", self.0)
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct BilliardParams {
     pub bl_x: Meters,
     pub bl_y: Meters,
@@ -44,20 +60,20 @@ pub struct BilliardParams {
     pub hold_for: Duration,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Waypoint {
     pub x: Meters,
     pub y: Meters,
     pub z: Meters,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub enum FlightMode {
     Strafe,
     BodyFrame,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Command {
     Takeoff {
         height: Meters,

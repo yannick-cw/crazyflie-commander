@@ -8,11 +8,16 @@ use crate::model::{
     Movement, State,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use drone_control::Meters;
 use drone_control::{Abort, CommandUnit, MetersPerSecond, MotionCommand, SetpointHover};
+use drone_control::{Command, Meters};
+use futures::StreamExt;
 use ratatea::Cmd;
+use std::io::Error;
+use tokio::fs;
+use tokio::fs::DirEntry;
 use tokio::sync::{mpsc, oneshot};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::{ReadDirStream, UnboundedReceiverStream};
+use tracing::warn;
 
 pub fn update_all(
     command_unit: &'static impl CommandUnit,
@@ -44,7 +49,9 @@ pub fn update_all(
             let (new_state, cmd) = match selected_mode {
                 ModeSelection::MissionSelectItem => (
                     State::MissionSelect(MissionSelectState::default()),
-                    Cmd::none(),
+                    Cmd::new(read_missions(), |m| {
+                        Msg::MissionSelect(MissionSelectMessage::MissionsLoaded(m))
+                    }),
                 ),
                 ModeSelection::MissionPlanItem => (model.state, Cmd::none()),
                 ModeSelection::FreeFlightItem => {
@@ -144,6 +151,10 @@ fn update_mission_select(
         }
         // handled by parent
         MissionSelectMessage::Selected(_, _) => Cmd::none(),
+        MissionSelectMessage::MissionsLoaded(missions) => {
+            model.missions = missions;
+            Cmd::none()
+        }
     }
 }
 
@@ -163,23 +174,21 @@ fn update_mission_execution(
             Cmd::new(mission, |_| MissionExecutionMessage::MissionResult)
         }
         MissionExecutionMessage::MissionResult => Cmd::none(),
-        MissionExecutionMessage::SafeLand => match model.abort_sender.take() {
-            None => Cmd::none(),
-            Some(s) => {
-                let signal = async move { s.send(Abort::Land) };
-                Cmd::new(signal, |_| MissionExecutionMessage::MissionResult)
-            }
-        },
-        MissionExecutionMessage::EmergencyAbort => match model.abort_sender.take() {
-            None => Cmd::none(),
-            Some(s) => {
-                let signal = async move { s.send(Abort::HardStop) };
-                Cmd::new(signal, |_| MissionExecutionMessage::MissionResult)
-            }
-        },
+        MissionExecutionMessage::SafeLand => abort_mission(model, Abort::Land),
+        MissionExecutionMessage::EmergencyAbort => abort_mission(model, Abort::HardStop),
         MissionExecutionMessage::MissionUpdate(update) => {
             model.mission_status = update;
             Cmd::none()
+        }
+    }
+}
+
+fn abort_mission(model: &mut MissionExecutionState, signal: Abort) -> Cmd<MissionExecutionMessage> {
+    match model.abort_sender.take() {
+        None => Cmd::none(),
+        Some(s) => {
+            let signal = async move { s.send(signal) };
+            Cmd::new(signal, |_| MissionExecutionMessage::MissionResult)
         }
     }
 }
@@ -365,5 +374,43 @@ fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
         State::Home(_) => Cmd::pure(Msg::Home(nav)),
         State::MissionSelect(_) => Cmd::pure(Msg::MissionSelect(MissionSelectMessage::Nav(nav))),
         _ => Cmd::none(),
+    }
+}
+
+async fn read_missions() -> Vec<(String, Vec<Command>)> {
+    match fs::read_dir("./drone-commander/missions").await {
+        Ok(dir) => {
+            ReadDirStream::new(dir)
+                .filter_map(|entry| async {
+                    match read_file(&entry.ok()?).await {
+                        Ok(Some(mission)) => Some(mission),
+                        Ok(None) => None,
+                        Err(e) => {
+                            warn!("skipping: {e}");
+                            None
+                        }
+                    }
+                })
+                .collect()
+                .await
+        }
+        Err(err) => {
+            warn!("Could not load any missions {err}");
+            vec![]
+        }
+    }
+}
+
+async fn read_file(entry: &DirEntry) -> Result<Option<(String, Vec<Command>)>, Error> {
+    let file_path = entry.path();
+    if entry.file_type().await?.is_file() && file_path.extension() == Some("json".as_ref()) {
+        let file_content = fs::read_to_string(&file_path).await?;
+
+        let file_name = file_path.file_stem().and_then(|s| s.to_str()).unwrap();
+
+        let mission: Vec<Command> = serde_json::from_str(&file_content)?;
+        Ok(Some((file_name.to_owned(), mission)))
+    } else {
+        Ok(None)
     }
 }
