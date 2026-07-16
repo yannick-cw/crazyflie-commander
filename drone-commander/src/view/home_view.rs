@@ -1,5 +1,5 @@
-use crate::model::HomeState;
-use crate::model::ModeSelection::{FreeFlightItem, MissionPlanItem, MissionSelectItem};
+use crate::pages::home::Model;
+use crate::pages::home::ModeSelection::{FreeFlightItem, MissionPlanItem, MissionSelectItem};
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{center, controls, panel, selectable, shell};
 
@@ -13,7 +13,7 @@ use ratatui::{
 
 // AI GENERATED
 
-pub fn view(model: &HomeState, supports_enhancements: bool, frame: &mut Frame) {
+pub fn view(model: &Model, supports_enhancements: bool, frame: &mut Frame) {
     let area = frame.area();
 
     let shell = shell(controls(&[

@@ -66,15 +66,6 @@ impl<Msg> FromIterator<LocalBoxFuture<'static, Msg>> for Cmd<Msg> {
     }
 }
 
-pub struct Program<Model, Msg> {
-    pub init: fn() -> (Model, Cmd<Msg>),
-    pub update: fn(Msg, Model) -> (Model, Cmd<Msg>),
-    pub view: fn(&Model, &mut Frame),
-    pub subscriptions: Sub<Msg>, // fn(&Model) -> for now fixed
-    pub lift_terminal_event: Option<fn(e: Event) -> Option<Msg>>,
-    pub exit_condition: Option<fn(&Model) -> bool>,
-}
-
 pub trait Ratatea {
     type Model;
     type Msg;

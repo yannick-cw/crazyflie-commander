@@ -10,11 +10,11 @@ use ratatui::{
     },
 };
 
-use crate::model::{FreeFlightState, MissionExecutionState, Model, State};
+use crate::pages::{free_flight, mission_execution};
+use crate::program::{Model, State};
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
 use drone_control::{Command, Meters, MissionStatus, Setpoint, Telemetry};
-
 // AI GENERATED
 
 /// Speed (m/s) that maps to a full gauge / "hot" colour.
@@ -109,9 +109,14 @@ pub fn view(model: &Model, frame: &mut Frame) {
     frame.render_widget(speed_gauge(t), speed_area);
 }
 
-fn mission_bar(mission: Option<&MissionExecutionState>) -> Gauge<'static> {
+fn mission_bar(mission: Option<&mission_execution::Model>) -> Gauge<'static> {
     let (title, ratio, label, color) = match mission {
-        None => (" FREE FLIGHT ".to_string(), 0.0, "manual".to_string(), LABEL),
+        None => (
+            " FREE FLIGHT ".to_string(),
+            0.0,
+            "manual".to_string(),
+            LABEL,
+        ),
         Some(s) => {
             let title = format!(" MISSION · {} ", s.name);
             match &s.mission_status {
@@ -138,7 +143,7 @@ fn mission_bar(mission: Option<&MissionExecutionState>) -> Gauge<'static> {
 }
 
 /// A blinking red ● REC indicator with the running sample count, shown while recording.
-fn recording_panel(s: &FreeFlightState) -> Paragraph<'static> {
+fn recording_panel(s: &free_flight::Model) -> Paragraph<'static> {
     Paragraph::new(vec![
         Line::from(vec![
             Span::styled(
@@ -158,9 +163,13 @@ fn recording_panel(s: &FreeFlightState) -> Paragraph<'static> {
 }
 
 /// Free-flight top bar: airborne status + the current speed-setting as a gauge.
-fn free_flight_bar(s: &FreeFlightState) -> Gauge<'static> {
+fn free_flight_bar(s: &free_flight::Model) -> Gauge<'static> {
     let setting = s.speed_setting.0;
-    let status = if s.is_airborne { "airborne" } else { "grounded" };
+    let status = if s.is_airborne {
+        "airborne"
+    } else {
+        "grounded"
+    };
     Gauge::default()
         .block(panel(" FREE FLIGHT · SPEED "))
         .gauge_style(Style::new().fg(BRAND))
@@ -178,7 +187,7 @@ enum PathElem {
 /// Top-down braille map: before take-off it previews the whole planned route; during
 /// flight it marks the waypoints with the current one highlighted. Always shows the
 /// live drone position and heading.
-fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
+fn map(t: &Telemetry, mission: Option<&mission_execution::Model>) -> impl Widget {
     let drone = (t.x() as f64, t.y() as f64);
     let yaw = t.yaw() as f64;
     let route = mission.map(|m| waypoints(&m.mission)).unwrap_or_default();
@@ -189,7 +198,9 @@ fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
         Some(MissionStatus::Idle | MissionStatus::Aborted(_))
     );
     let path = if preflight {
-        mission.map(|m| mission_path(&m.mission)).unwrap_or_default()
+        mission
+            .map(|m| mission_path(&m.mission))
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
@@ -206,11 +217,22 @@ fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
                 match elem {
                     PathElem::Seg(a, b) => {
                         let (a, b) = (tf(*a), tf(*b));
-                        ctx.draw(&CanvasLine { x1: a.0, y1: a.1, x2: b.0, y2: b.1, color: MISSION });
+                        ctx.draw(&CanvasLine {
+                            x1: a.0,
+                            y1: a.1,
+                            x2: b.0,
+                            y2: b.1,
+                            color: MISSION,
+                        });
                     }
                     PathElem::Ring(c, r) => {
                         let c = tf(*c);
-                        ctx.draw(&Circle { x: c.0, y: c.1, radius: *r, color: MISSION });
+                        ctx.draw(&Circle {
+                            x: c.0,
+                            y: c.1,
+                            radius: *r,
+                            color: MISSION,
+                        });
                     }
                     PathElem::Rect(bl, tr) => {
                         let corners = [
@@ -241,11 +263,21 @@ fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
                 } else {
                     (0.06, MISSION)
                 };
-                ctx.draw(&Circle { x: px, y: py, radius, color });
+                ctx.draw(&Circle {
+                    x: px,
+                    y: py,
+                    radius,
+                    color,
+                });
             }
             // the drone, and a heading line showing which way it faces
             let d = tf(drone);
-            ctx.draw(&Circle { x: d.0, y: d.1, radius: 0.13, color: POSITION });
+            ctx.draw(&Circle {
+                x: d.0,
+                y: d.1,
+                radius: 0.13,
+                color: POSITION,
+            });
             let rad = yaw.to_radians();
             let nose = tf((drone.0 + 0.45 * rad.cos(), drone.1 + 0.45 * rad.sin()));
             ctx.draw(&CanvasLine {
@@ -320,9 +352,10 @@ fn waypoints(mission: &[Command]) -> Vec<(f64, f64)> {
             *cursor = match cmd {
                 Command::Move { x, y, .. } => (cursor.0 + m(x), cursor.1 + m(y)),
                 Command::MoveToWaypoint { x, y, .. } => (m(x), m(y)),
-                Command::SmoothPath { waypoints, .. } => {
-                    waypoints.last().map(|w| (m(&w.x), m(&w.y))).unwrap_or(*cursor)
-                }
+                Command::SmoothPath { waypoints, .. } => waypoints
+                    .last()
+                    .map(|w| (m(&w.x), m(&w.y)))
+                    .unwrap_or(*cursor),
                 Command::BilliardBox(p) => (
                     (m(&p.bl_x) + m(&p.tr_x)) / 2.0,
                     (m(&p.bl_y) + m(&p.tr_y)) / 2.0,
@@ -335,7 +368,7 @@ fn waypoints(mission: &[Command]) -> Vec<(f64, f64)> {
         .collect()
 }
 
-fn current_index(mission: &MissionExecutionState) -> Option<usize> {
+fn current_index(mission: &mission_execution::Model) -> Option<usize> {
     match &mission.mission_status {
         MissionStatus::Running(Some(p)) => Some(p.command_num),
         _ => None,

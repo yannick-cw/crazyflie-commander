@@ -1,4 +1,4 @@
-use crate::model::MissionSelectState;
+use crate::pages::mission_select::Model;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, selectable, shell};
 use drone_control::Command;
@@ -12,7 +12,7 @@ use ratatui::{
 
 // AI GENERATED
 
-pub fn view(model: &MissionSelectState, frame: &mut Frame) {
+pub fn view(model: &Model, frame: &mut Frame) {
     let area = frame.area();
 
     let shell = shell(controls(&[
@@ -78,7 +78,7 @@ fn section(
     std::iter::once(header).chain(rows).collect()
 }
 
-fn details(model: &MissionSelectState) -> Paragraph<'static> {
+fn details(model: &Model) -> Paragraph<'static> {
     let selected = model
         .missions
         .iter()
