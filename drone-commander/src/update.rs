@@ -68,7 +68,13 @@ pub fn update_all(
             model.exit = true;
             (model, Cmd::none())
         }
-        (_, Msg::ToHomeScreen) => (Model::default(), Cmd::none()),
+        (_, Msg::ToHomeScreen) => (
+            Model {
+                state: State::default(),
+                ..model
+            },
+            Cmd::none(),
+        ),
         // ------------------------------------------------------------
         // communication towards parent to change view
         // ------------------------------------------------------------
@@ -87,7 +93,7 @@ pub fn update_all(
                     ),
                 ),
                 ModeSelection::MissionPlanItem => (model.state, Cmd::none()),
-                ModeSelection::FreeFlightItem => {
+                ModeSelection::FreeFlightItem if model.terminal_supports_enhancements => {
                     let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
                     let commands = UnboundedReceiverStream::new(motion_receiver);
                     (
@@ -106,6 +112,7 @@ pub fn update_all(
                         Cmd::new(command_unit.fly(commands), |_| Msg::FreeFlight(CommandSet)),
                     )
                 }
+                ModeSelection::FreeFlightItem => (model.state, Cmd::none()),
             };
             model.state = new_state;
             (model, cmd)

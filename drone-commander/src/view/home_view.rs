@@ -13,7 +13,7 @@ use ratatui::{
 
 // AI GENERATED
 
-pub fn view(model: &HomeState, frame: &mut Frame) {
+pub fn view(model: &HomeState, supports_enhancements: bool, frame: &mut Frame) {
     let area = frame.area();
 
     let shell = shell(controls(&[
@@ -40,14 +40,30 @@ pub fn view(model: &HomeState, frame: &mut Frame) {
 
     let mut lines: Vec<Line> = modes
         .iter()
-        .map(|&(ref mode, name)| selectable(name, *mode == model.selected_mode))
+        .map(|&(ref mode, name)| {
+            if *mode == FreeFlightItem && !supports_enhancements {
+                // free flight needs key press/release; grey it out when unsupported
+                Line::from(Span::styled(
+                    format!("   {name}"),
+                    Style::new()
+                        .fg(LABEL)
+                        .add_modifier(Modifier::ITALIC | Modifier::CROSSED_OUT),
+                ))
+            } else {
+                selectable(name, *mode == model.selected_mode)
+            }
+        })
         .collect();
 
     // one-line description of the highlighted mode
-    let description = match model.selected_mode {
-        MissionSelectItem => "pick a saved mission and fly it",
-        MissionPlanItem => "build a route from waypoints", // TODO: not built yet
-        FreeFlightItem => "manual, observe-only flight",   // TODO: observe only for now
+    let description = if model.selected_mode == FreeFlightItem && !supports_enhancements {
+        "unavailable: this terminal has no key-release support"
+    } else {
+        match model.selected_mode {
+            MissionSelectItem => "pick a saved mission and fly it",
+            MissionPlanItem => "build a route from waypoints", // TODO: not built yet
+            FreeFlightItem => "manual, observe-only flight",   // TODO: observe only for now
+        }
     };
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(

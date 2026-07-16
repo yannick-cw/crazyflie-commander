@@ -6,19 +6,9 @@ use tokio::sync::{mpsc, oneshot};
 #[derive(Debug)]
 pub struct Model {
     pub telemetry: Telemetry,
+    pub terminal_supports_enhancements: bool,
     pub exit: bool,
     pub state: State,
-}
-impl Default for Model {
-    fn default() -> Self {
-        Model {
-            telemetry: Default::default(),
-            exit: false,
-            state: Home(HomeState {
-                selected_mode: ModeSelection::MissionSelectItem,
-            }),
-        }
-    }
 }
 #[derive(Debug)]
 pub enum State {
@@ -29,6 +19,13 @@ pub enum State {
     MissionPlan(),
     // this will go to "current" observe only for now
     FreeFlight(FreeFlightState),
+}
+impl Default for State {
+    fn default() -> Self {
+        Home(HomeState {
+            selected_mode: ModeSelection::MissionSelectItem,
+        })
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]

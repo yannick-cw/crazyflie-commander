@@ -61,7 +61,15 @@ impl<U: CommandUnit> Ratatea for Program<U> {
     type Msg = Msg;
 
     fn init(&self) -> (Self::Model, Cmd<Self::Msg>) {
-        (Model::default(), Cmd::none())
+        (
+            Model {
+                telemetry: Default::default(),
+                exit: false,
+                terminal_supports_enhancements: self.terminal_supports_enhancements,
+                state: State::default(),
+            },
+            Cmd::none(),
+        )
     }
 
     fn update(&self, msg: Self::Msg, model: Self::Model) -> (Self::Model, Cmd<Self::Msg>) {
@@ -70,7 +78,7 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 
     fn view(&self, model: &Self::Model, frame: &mut Frame) {
         match &model.state {
-            State::Home(s) => home_view::view(s, frame),
+            State::Home(s) => home_view::view(s, model.terminal_supports_enhancements, frame),
             State::MissionExecution(_) => flight_view::view(model, frame),
             State::MissionSelect(s) => mission_select_view::view(s, frame),
             State::MissionPlan() => {}
@@ -136,8 +144,8 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 //      d- lib gets new command::replay that takes a list of setpoints with timestamps or duration offsets from start and
 //      executes as normal thing as always <-> and lib gets the logic of slow fly to start and land or hover at finish
 // - [x] paint selected mission before flying it! and then take off t button to start
+// - [x] free flight not selectable in terminals that do not support
 // ---- NEXT
-// - [ ] free flight not selectable in terminals that do not support
 // --- NEXT
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
