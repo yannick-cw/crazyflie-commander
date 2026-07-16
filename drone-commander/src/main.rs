@@ -4,6 +4,7 @@ use crate::model::{Model, State};
 use crate::update::update_all;
 use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::Event;
+use crossterm::terminal;
 use drone_control::{CommandUnit, setup_link};
 use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub, run};
@@ -24,6 +25,7 @@ async fn main() -> color_eyre::Result<()> {
         .with_writer(file_appender)
         .with_ansi(false)
         .init();
+    let terminal_supports_enhancements = terminal::supports_keyboard_enhancement()?;
 
     info!("Starting up....");
     Ok(match setup_link().await {
@@ -32,13 +34,19 @@ async fn main() -> color_eyre::Result<()> {
             // this needs to live for the whole program
             let command_unit: &'static _ = Box::leak(Box::new(real_unit));
 
-            let p = Program { command_unit };
+            let p = Program {
+                command_unit,
+                terminal_supports_enhancements,
+            };
             run(p).await?;
         }
         _ => {
             // fallback for dev
             let command_unit = &DevUnit;
-            let p = Program { command_unit };
+            let p = Program {
+                command_unit,
+                terminal_supports_enhancements,
+            };
             run(p).await?;
         }
     })
@@ -46,6 +54,7 @@ async fn main() -> color_eyre::Result<()> {
 
 struct Program<U: CommandUnit + 'static> {
     command_unit: &'static U,
+    terminal_supports_enhancements: bool,
 }
 impl<U: CommandUnit> Ratatea for Program<U> {
     type Model = Model;

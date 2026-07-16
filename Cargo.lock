@@ -626,7 +626,6 @@ dependencies = [
 name = "drone-control"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "crazyflie-lib",
  "crazyflie-link",
  "crossterm",

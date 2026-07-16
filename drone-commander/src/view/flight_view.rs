@@ -6,14 +6,14 @@ use ratatui::{
     text::{Line, Span},
     widgets::{
         Gauge, Paragraph, Widget,
-        canvas::{Canvas, Circle},
+        canvas::{Canvas, Circle, Line as CanvasLine},
     },
 };
 
 use crate::model::{FreeFlightState, MissionExecutionState, Model, State};
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
-use drone_control::{Command, Meters, MissionStatus, Telemetry};
+use drone_control::{Command, Meters, MissionStatus, Setpoint, Telemetry};
 
 // AI GENERATED
 
@@ -168,14 +168,32 @@ fn free_flight_bar(s: &FreeFlightState) -> Gauge<'static> {
         .label(format!("{status} · {setting:.1} m/s"))
 }
 
-/// Top-down braille map: the planned route (every waypoint, the current one highlighted)
-/// plus the drone's live position.
+/// A piece of the planned route, in world metres.
+enum PathElem {
+    Seg((f64, f64), (f64, f64)),
+    Ring((f64, f64), f64),
+    Rect((f64, f64), (f64, f64)),
+}
+
+/// Top-down braille map: before take-off it previews the whole planned route; during
+/// flight it marks the waypoints with the current one highlighted. Always shows the
+/// live drone position and heading.
 fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
     let drone = (t.x() as f64, t.y() as f64);
+    let yaw = t.yaw() as f64;
     let route = mission.map(|m| waypoints(&m.mission)).unwrap_or_default();
     let current = mission.and_then(current_index);
-    // top-down as seen by the pilot: origin (takeoff) centred,
-    // x (forward) grows up the screen, y (left) grows to the left
+    // preview the full route only in a take-off-ready state (idle / aborted)
+    let preflight = matches!(
+        mission.map(|m| &m.mission_status),
+        Some(MissionStatus::Idle | MissionStatus::Aborted(_))
+    );
+    let path = if preflight {
+        mission.map(|m| mission_path(&m.mission)).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    // origin (takeoff) centred; x (forward) up, y (left) left
     let tf = |(x, y): (f64, f64)| (-y, x);
     Canvas::default()
         .block(panel(" MAP "))
@@ -183,7 +201,39 @@ fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
         .x_bounds([-MAP_M, MAP_M])
         .y_bounds([-MAP_M, MAP_M])
         .paint(move |ctx| {
-            // every waypoint visible; the one being flown to is highlighted bigger + green
+            // planned route preview (pre-flight only)
+            for elem in &path {
+                match elem {
+                    PathElem::Seg(a, b) => {
+                        let (a, b) = (tf(*a), tf(*b));
+                        ctx.draw(&CanvasLine { x1: a.0, y1: a.1, x2: b.0, y2: b.1, color: MISSION });
+                    }
+                    PathElem::Ring(c, r) => {
+                        let c = tf(*c);
+                        ctx.draw(&Circle { x: c.0, y: c.1, radius: *r, color: MISSION });
+                    }
+                    PathElem::Rect(bl, tr) => {
+                        let corners = [
+                            (bl.0, bl.1),
+                            (tr.0, bl.1),
+                            (tr.0, tr.1),
+                            (bl.0, tr.1),
+                            (bl.0, bl.1),
+                        ];
+                        for w in corners.windows(2) {
+                            let (a, b) = (tf(w[0]), tf(w[1]));
+                            ctx.draw(&CanvasLine {
+                                x1: a.0,
+                                y1: a.1,
+                                x2: b.0,
+                                y2: b.1,
+                                color: MISSION,
+                            });
+                        }
+                    }
+                }
+            }
+            // waypoint dots; the one being flown to is highlighted bigger + green
             for (i, &point) in route.iter().enumerate() {
                 let (px, py) = tf(point);
                 let (radius, color) = if Some(i) == current {
@@ -193,10 +243,71 @@ fn map(t: &Telemetry, mission: Option<&MissionExecutionState>) -> impl Widget {
                 };
                 ctx.draw(&Circle { x: px, y: py, radius, color });
             }
-            // the drone
-            let (dx, dy) = tf(drone);
-            ctx.draw(&Circle { x: dx, y: dy, radius: 0.13, color: POSITION });
+            // the drone, and a heading line showing which way it faces
+            let d = tf(drone);
+            ctx.draw(&Circle { x: d.0, y: d.1, radius: 0.13, color: POSITION });
+            let rad = yaw.to_radians();
+            let nose = tf((drone.0 + 0.45 * rad.cos(), drone.1 + 0.45 * rad.sin()));
+            ctx.draw(&CanvasLine {
+                x1: d.0,
+                y1: d.1,
+                x2: nose.0,
+                y2: nose.1,
+                color: HEADING,
+            });
         })
+}
+
+/// Fold the command list into drawable route pieces, threading a cursor so relative
+/// moves accumulate. Handles every `Command` variant.
+fn mission_path(mission: &[Command]) -> Vec<PathElem> {
+    let m = |v: &Meters| v.0 as f64;
+    let mut cursor = (0.0, 0.0);
+    let mut elems = Vec::new();
+    for cmd in mission {
+        match cmd {
+            Command::Move { x, y, .. } => {
+                let next = (cursor.0 + m(x), cursor.1 + m(y));
+                elems.push(PathElem::Seg(cursor, next));
+                cursor = next;
+            }
+            Command::MoveToWaypoint { x, y, .. } => {
+                let next = (m(x), m(y));
+                elems.push(PathElem::Seg(cursor, next));
+                cursor = next;
+            }
+            Command::SmoothPath { waypoints, .. } => {
+                for w in waypoints {
+                    let next = (m(&w.x), m(&w.y));
+                    elems.push(PathElem::Seg(cursor, next));
+                    cursor = next;
+                }
+            }
+            Command::Setpoints { points } => {
+                for p in points {
+                    if let Setpoint::PositionPoint { x, y, .. } = p {
+                        let next = (m(x), m(y));
+                        elems.push(PathElem::Seg(cursor, next));
+                        cursor = next;
+                    }
+                }
+            }
+            Command::Orbit { radius, .. } => elems.push(PathElem::Ring(cursor, m(radius))),
+            Command::BilliardBox(p) => {
+                elems.push(PathElem::Rect(
+                    (m(&p.bl_x), m(&p.bl_y)),
+                    (m(&p.tr_x), m(&p.tr_y)),
+                ));
+                cursor = (
+                    (m(&p.bl_x) + m(&p.tr_x)) / 2.0,
+                    (m(&p.bl_y) + m(&p.tr_y)) / 2.0,
+                );
+            }
+            // no horizontal displacement
+            Command::Takeoff { .. } | Command::Hover { .. } | Command::Land { .. } => {}
+        }
+    }
+    elems
 }
 
 /// Each command's target point in map metres (takeoff origin), threaded through a
