@@ -4,7 +4,7 @@ A terminal ground station for flying a [Crazyflie][] 2.1(+) nano-drone from your
 It shows live telemetry and a top-down map, runs saved missions, lets you construct missions, and lets you fly the
 drone by hand and record what you fly back as a replayable mission.
 
-![mission](media/mission.gif)
+https://github.com/yannick-cw/crazyflie-commander/raw/refs/heads/main/media/crazyflight_example.mp4
 
 ## Features
 
