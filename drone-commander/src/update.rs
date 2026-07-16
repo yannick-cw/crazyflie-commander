@@ -491,7 +491,8 @@ async fn read_file(entry: &DirEntry) -> Result<Option<(String, Vec<Command>)>, E
 async fn store_recoding(recording: Vec<SetpointRecording>) {
     if let Some(first_p) = recording.first() {
         let z = recording.last().map(|p| p.z.0).unwrap_or(2.0);
-        let land_duration = Duration::from_secs_f32(z.clamp(0.0, 2.0));
+        // z=1m => 2s, z=0.5m => 1s
+        let land_duration = Duration::from_secs_f32((z.max(0.0) / 0.5).min(3.0));
 
         let mission = vec![
             Command::Takeoff {
