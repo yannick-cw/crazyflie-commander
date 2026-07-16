@@ -2,7 +2,7 @@ use crate::control::command_unit::{Meters, MetersPerSecond, Telemetry};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Setpoint {
     VelocityPoint {
         vx: MetersPerSecond,
@@ -16,6 +16,16 @@ pub enum Setpoint {
         z: Meters,
         yaw_degrees: f32,
     },
+}
+impl Default for Setpoint {
+    fn default() -> Self {
+        Setpoint::PositionPoint {
+            x: Default::default(),
+            y: Default::default(),
+            z: Default::default(),
+            yaw_degrees: 0.0,
+        }
+    }
 }
 
 pub enum Step<S> {

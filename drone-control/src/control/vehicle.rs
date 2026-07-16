@@ -3,6 +3,7 @@ use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
+use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time;
@@ -12,6 +13,14 @@ use tracing::info;
 pub struct Vehicle {
     cf: Crazyflie,
     pub telemetry: watch::Receiver<Telemetry>,
+}
+impl Debug for Vehicle {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Vehicle")
+            .field("cf", &"Crazyflie")
+            .field("telemetry", &"telemetry_receiver")
+            .finish()
+    }
 }
 
 impl Vehicle {

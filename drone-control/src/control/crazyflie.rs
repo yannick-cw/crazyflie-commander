@@ -87,6 +87,7 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     })
 }
 
+#[derive(Debug)]
 pub struct CrazyflieCommandUnit {
     autopilot: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,

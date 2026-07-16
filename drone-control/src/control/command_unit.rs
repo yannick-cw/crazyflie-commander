@@ -16,9 +16,10 @@ pub enum Abort {
 }
 
 #[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, PartialOrd, Default, Add, Sub, Mul, Div,
+    Debug, Default, Clone, PartialEq, PartialOrd, Serialize, Deserialize, Copy, Add, Sub, Mul, Div,
 )]
 pub struct Meters(pub f32);
+
 impl Display for Meters {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}m", self.0)
@@ -47,7 +48,7 @@ impl Display for MetersPerSecond {
         write!(f, "{}m/s", self.0)
     }
 }
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct BilliardParams {
     pub bl_x: Meters,
     pub bl_y: Meters,
@@ -61,20 +62,20 @@ pub struct BilliardParams {
     pub hold_for: Duration,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Waypoint {
     pub x: Meters,
     pub y: Meters,
     pub z: Meters,
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum FlightMode {
     Strafe,
     BodyFrame,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Command {
     Takeoff {
         height: Meters,
@@ -122,7 +123,7 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum BatteryLevel {
     Low,
     High,
@@ -133,28 +134,33 @@ impl Default for BatteryLevel {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum MissionStatus {
     Idle,
     Running(Option<Progress>),
     Aborted(Reason),
 }
+impl Default for MissionStatus {
+    fn default() -> Self {
+        MissionStatus::Idle
+    }
+}
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Reason {
     Landing,
     HardStop,
     LowBattery,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Progress {
     pub current_command: Command,
     pub command_num: usize,
     pub total_commands: usize,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Telemetry {
     pub x: Meters,
     pub y: Meters,
@@ -216,7 +222,7 @@ impl Telemetry {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct SetpointHover {
     pub vx: MetersPerSecond,
     pub vy: MetersPerSecond,
@@ -224,7 +230,7 @@ pub struct SetpointHover {
     pub yaw_rate: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum MotionCommand {
     TakeOff(Meters),
     Move(SetpointHover),
