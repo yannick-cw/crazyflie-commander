@@ -1,7 +1,8 @@
 use crate::control::command_unit::{Meters, MetersPerSecond, Telemetry};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Setpoint {
     VelocityPoint {
         vx: MetersPerSecond,

@@ -41,7 +41,7 @@ impl CommandUnit for DevUnit {
                 tele.z = tele.z + Meters(j());
                 tele.x_v = tele.x_v + MetersPerSecond(j());
                 tele.y_v = tele.y_v + MetersPerSecond(j());
-                tele.yaw += j();
+                tele.yaw_degrees += j();
                 sender.send(tele).unwrap();
             }
         });

@@ -5,9 +5,10 @@ use crate::view::view_common::{center, controls, panel, selectable, shell};
 
 use ratatui::{
     Frame,
+    layout::{Alignment, Constraint, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Block, BorderType, Paragraph},
 };
 
 // AI GENERATED
@@ -23,8 +24,13 @@ pub fn view(model: &HomeState, frame: &mut Frame) {
     let inner = shell.inner(area);
     frame.render_widget(shell, area);
 
+    // menu fills, with a warning banner pinned to the bottom
+    let [body, warning_area] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(5)]).areas(inner);
+    frame.render_widget(warning(), warning_area);
+
     // centre a modest menu panel
-    let menu_area = center(inner, 48, 9);
+    let menu_area = center(body, 48, 9);
 
     let modes = [
         (MissionSelectItem, "Select Mission"),
@@ -50,4 +56,33 @@ pub fn view(model: &HomeState, frame: &mut Frame) {
     )));
 
     frame.render_widget(Paragraph::new(lines).block(panel(" MODE ")), menu_area);
+}
+
+/// Loud reminder: the position estimate only resets on a fresh start, so moving the
+/// drone by hand between flights corrupts it.
+fn warning() -> Paragraph<'static> {
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(DANGER))
+        .title(Span::styled(
+            " ⚠ WARNING ",
+            Style::new().fg(DANGER).add_modifier(Modifier::BOLD),
+        ))
+        .title_alignment(Alignment::Center);
+    Paragraph::new(vec![
+        Line::from(Span::styled(
+            "DO NOT move the Crazyflie by hand between flights",
+            Style::new().fg(DANGER).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "it corrupts the position estimate (only reset on restart)",
+            Style::new().fg(WARN),
+        )),
+        Line::from(Span::styled(
+            "Flow deck required · position & heading are measured from takeoff",
+            Style::new().fg(WARN),
+        )),
+    ])
+    .alignment(Alignment::Center)
+    .block(block)
 }

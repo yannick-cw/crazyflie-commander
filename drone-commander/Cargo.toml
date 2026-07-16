@@ -20,6 +20,8 @@ tracing-appender = "0.2"
 tracing-subscriber = "0.3.23"
 tracing = "0.1.44"
 serde_json = "1.0.150"
+serde = { version = "1.0.228", features = ["derive"] }
+chrono = "0.4.45"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 #[profile.release]

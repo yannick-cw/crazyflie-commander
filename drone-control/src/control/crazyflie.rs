@@ -3,6 +3,7 @@ use crate::control::command_unit::{
 };
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
+use crate::control::patterns::setpoints::run_setpoints;
 use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
@@ -132,6 +133,7 @@ impl CrazyflieCommandUnit {
                     speed,
                     flight_mode,
                 } => run_smooth_path(waypoints, vehicle, speed, flight_mode).await?,
+                Command::Setpoints { points } => run_setpoints(points, vehicle).await?,
                 Command::Orbit {
                     radius,
                     orbital_period,
@@ -236,6 +238,7 @@ impl CommandUnit for CrazyflieCommandUnit {
                     }
                     Some(MotionCommand::Land) => {
                         last_setpoint = None;
+                        self.autopilot.notify_setpoint_stop().await?;
                         self.autopilot.land(Duration::from_secs(2)).await?;
                     }
                     Some(MotionCommand::TakeOff(z) )=> {

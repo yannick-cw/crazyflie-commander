@@ -1,6 +1,7 @@
 use crate::model::MissionSelectState;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, selectable, shell};
+use drone_control::Command;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
@@ -27,26 +28,63 @@ pub fn view(model: &MissionSelectState, frame: &mut Frame) {
     let [list_area, detail_area] =
         Layout::horizontal([Constraint::Min(0), Constraint::Length(32)]).areas(inner);
 
-    let items: Vec<Line> = model
-        .missions
-        .iter()
-        .enumerate()
-        .map(|(i, (name, cmds))| {
-            let mut row = selectable(name, i == model.selection);
-            row.spans.push(Span::styled(
-                format!("   ({} steps)", cmds.len()),
-                Style::new().fg(LABEL),
-            ));
-            row
-        })
+    // two sections, but one flat selection index running across both
+    let lines: Vec<Line> = section("missions", &model.missions, 0, model.selection)
+        .into_iter()
+        .chain(std::iter::once(Line::from("")))
+        .chain(section(
+            "recordings",
+            &model.recorded_missions,
+            model.missions.len(),
+            model.selection,
+        ))
         .collect();
 
-    frame.render_widget(Paragraph::new(items).block(panel(" MISSIONS ")), list_area);
+    frame.render_widget(Paragraph::new(lines).block(panel(" LIBRARY ")), list_area);
     frame.render_widget(details(model), detail_area);
 }
 
+/// One titled section: a header, then each mission as a selectable row (or a dim
+/// placeholder when empty). `offset` is where this section starts in the flat index.
+fn section(
+    title: &str,
+    missions: &[(String, Vec<Command>)],
+    offset: usize,
+    selection: usize,
+) -> Vec<Line<'static>> {
+    let header = Line::from(Span::styled(
+        format!(" {} ", title.to_uppercase()),
+        Style::new().fg(TITLE).add_modifier(Modifier::BOLD),
+    ));
+    let rows: Vec<Line> = if missions.is_empty() {
+        vec![Line::from(Span::styled(
+            "   (none yet)",
+            Style::new().fg(LABEL).add_modifier(Modifier::ITALIC),
+        ))]
+    } else {
+        missions
+            .iter()
+            .enumerate()
+            .map(|(i, (name, cmds))| {
+                let mut row = selectable(name, offset + i == selection);
+                row.spans.push(Span::styled(
+                    format!("   ({} steps)", cmds.len()),
+                    Style::new().fg(LABEL),
+                ));
+                row
+            })
+            .collect()
+    };
+    std::iter::once(header).chain(rows).collect()
+}
+
 fn details(model: &MissionSelectState) -> Paragraph<'static> {
-    let content = match model.missions.get(model.selection) {
+    let selected = model
+        .missions
+        .iter()
+        .chain(model.recorded_missions.iter())
+        .nth(model.selection);
+    let content = match selected {
         Some((name, cmds)) => vec![
             Line::from(Span::styled(
                 name.clone(),
@@ -61,10 +99,7 @@ fn details(model: &MissionSelectState) -> Paragraph<'static> {
                 Style::new().fg(LABEL).add_modifier(Modifier::ITALIC),
             )),
         ],
-        None => vec![Line::from(Span::styled(
-            "no missions",
-            Style::new().fg(LABEL),
-        ))],
+        None => vec![Line::from(Span::styled("no missions", Style::new().fg(LABEL)))],
     };
     Paragraph::new(content).block(panel(" DETAILS "))
 }

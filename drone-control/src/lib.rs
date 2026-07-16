@@ -9,3 +9,4 @@ pub use control::crazyflie::CrazyflieCommandUnit;
 pub use control::crazyflie::setup_link;
 pub use utils::errors;
 pub use utils::flight_paths;
+pub use control::low_level_engine::Setpoint;

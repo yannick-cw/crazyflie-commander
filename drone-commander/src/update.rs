@@ -5,19 +5,21 @@ use crate::messages::{
 use crate::model::Movement::{GoHome, Land, SpeedDown, SpeedUp, Start, Vx, Vy, YawRate};
 use crate::model::{
     FreeFlightState, HomeState, MissionExecutionState, MissionSelectState, ModeSelection, Model,
-    Movement, State,
+    Movement, SetpointRecording, State,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use drone_control::{Abort, CommandUnit, MetersPerSecond, MotionCommand, SetpointHover};
+use drone_control::{Abort, CommandUnit, MetersPerSecond, MotionCommand, SetpointHover, Telemetry};
 use drone_control::{Command, Meters};
 use futures::StreamExt;
 use ratatea::Cmd;
 use std::io::Error;
+use std::path::Path;
+use std::time::Duration;
 use tokio::fs;
 use tokio::fs::DirEntry;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::{ReadDirStream, UnboundedReceiverStream};
-use tracing::warn;
+use tracing::{info, warn};
 
 pub fn update_all(
     command_unit: &'static impl CommandUnit,
@@ -28,8 +30,31 @@ pub fn update_all(
     match (&mut model.state, msg) {
         // global message
         // ------------------------------------------------------------
-        (_, Msg::TelemetryUpdate(tele)) => {
+        (
+            s,
+            Msg::TelemetryUpdate(
+                tele @ Telemetry {
+                    x,
+                    y,
+                    z,
+                    yaw_degrees: yaw,
+                    ..
+                },
+            ),
+        ) => {
             model.telemetry = tele;
+            if let State::FreeFlight(flight_state) = s
+                && flight_state.is_recording
+            {
+                // todo this is a bit brittle right now - these setpoints will be replayed at 100hz
+                // so this relies on telemetry coming in at 100hz
+                flight_state.recording.push(SetpointRecording {
+                    x,
+                    y,
+                    z,
+                    yaw_degrees: yaw,
+                });
+            };
             (model, Cmd::none())
         }
         // key events
@@ -49,9 +74,15 @@ pub fn update_all(
             let (new_state, cmd) = match selected_mode {
                 ModeSelection::MissionSelectItem => (
                     State::MissionSelect(MissionSelectState::default()),
-                    Cmd::new(read_missions(), |m| {
-                        Msg::MissionSelect(MissionSelectMessage::MissionsLoaded(m))
-                    }),
+                    Cmd::new(
+                        async {
+                            (
+                                read_missions("missions").await,
+                                read_missions("missions/recordings").await,
+                            )
+                        },
+                        |(m, rm)| Msg::MissionSelect(MissionSelectMessage::MissionsLoaded(m, rm)),
+                    ),
                 ),
                 ModeSelection::MissionPlanItem => (model.state, Cmd::none()),
                 ModeSelection::FreeFlightItem => {
@@ -64,9 +95,11 @@ pub fn update_all(
                             z: Default::default(),
                             motion_sender,
                             is_airborne: false,
+                            is_recording: false,
                             speed_setting: MetersPerSecond(1.0),
                             yaw_rate: 0.0,
                             yaw_rate_setting: 150.0,
+                            recording: vec![],
                         }),
                         Cmd::new(command_unit.fly(commands), |_| Msg::FreeFlight(CommandSet)),
                     )
@@ -133,26 +166,33 @@ fn update_mission_select(
     model: &mut MissionSelectState,
     msg: MissionSelectMessage,
 ) -> Cmd<MissionSelectMessage> {
-    let total_missions = model.missions.len();
+    let total_missions = model.missions.len() + model.recorded_missions.len();
     match msg {
-        MissionSelectMessage::Nav(NavigationMessage::Down) => {
+        MissionSelectMessage::Nav(NavigationMessage::Down) if total_missions > 0 => {
             model.selection = (model.selection + 1).min(total_missions - 1);
             Cmd::none()
         }
-        MissionSelectMessage::Nav(NavigationMessage::Up) => {
+        MissionSelectMessage::Nav(NavigationMessage::Up) if total_missions > 0 => {
             model.selection = model.selection.saturating_sub(1);
             Cmd::none()
         }
         // sends message out
-        MissionSelectMessage::Nav(NavigationMessage::Select) => {
-            let (name, mission) = &model.missions[model.selection];
+        MissionSelectMessage::Nav(NavigationMessage::Select) if total_missions > 0 => {
+            let (name, mission) = model
+                .missions
+                .iter()
+                .chain(&model.recorded_missions)
+                .nth(model.selection)
+                .unwrap();
             let message = MissionSelectMessage::Selected(mission.clone(), name.clone());
             Cmd::pure(message)
         }
+        MissionSelectMessage::Nav(_) => Cmd::none(),
         // handled by parent
         MissionSelectMessage::Selected(_, _) => Cmd::none(),
-        MissionSelectMessage::MissionsLoaded(missions) => {
+        MissionSelectMessage::MissionsLoaded(missions, recorded_m) => {
             model.missions = missions;
+            model.recorded_missions = recorded_m;
             Cmd::none()
         }
     }
@@ -279,6 +319,15 @@ fn update_free_flight(
             model.speed_setting -= MetersPerSecond(0.1);
             Cmd::none()
         }
+        FreeFlightMessage::StartRecording => {
+            model.is_recording = true;
+            Cmd::none()
+        }
+        FreeFlightMessage::StopRecording => {
+            let recording = std::mem::take(&mut model.recording);
+            model.is_recording = false;
+            Cmd::new(store_recoding(recording), |_| CommandSet)
+        }
     }
 }
 
@@ -323,7 +372,9 @@ fn update_key_evt(key_event: KeyEvent, model: &Model) -> Cmd<Msg> {
             }
         }
         KeyCode::Esc | KeyCode::Char('q') if key_event.is_press() => Cmd::pure(Msg::Quit),
-        KeyCode::Char('c') | KeyCode::Char('C') if key_event.modifiers == KeyModifiers::CONTROL => {
+        KeyCode::Char('c') | KeyCode::Char('C')
+            if key_event.modifiers == KeyModifiers::CONTROL && key_event.is_press() =>
+        {
             Cmd::pure(Msg::Quit)
         }
         KeyCode::Char('j') | KeyCode::Down if key_event.is_press() => {
@@ -358,6 +409,15 @@ fn update_key_evt(key_event: KeyEvent, model: &Model) -> Cmd<Msg> {
             State::FreeFlight(_) => Cmd::pure(Msg::FreeFlight(FreeFlightMessage::Abort)),
             _ => Cmd::none(),
         },
+        KeyCode::Char('r') if key_event.is_press() => match &model.state {
+            State::FreeFlight(flight_state) if !flight_state.is_recording => {
+                Cmd::pure(Msg::FreeFlight(FreeFlightMessage::StartRecording))
+            }
+            State::FreeFlight(flight_state) if flight_state.is_recording => {
+                Cmd::pure(Msg::FreeFlight(FreeFlightMessage::StopRecording))
+            }
+            _ => Cmd::none(),
+        },
         KeyCode::Char('t') if key_event.is_press() => match model.state {
             State::FreeFlight(_) => Cmd::pure(Msg::FreeFlight(FreeFlightMessage::Move(Start))),
             _ => Cmd::none(),
@@ -377,8 +437,9 @@ fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
     }
 }
 
-async fn read_missions() -> Vec<(String, Vec<Command>)> {
-    match fs::read_dir("./drone-commander/missions").await {
+// relative path e.g. missions
+async fn read_missions(path: &str) -> Vec<(String, Vec<Command>)> {
+    match fs::read_dir(Path::new("./drone-commander").join(path)).await {
         Ok(dir) => {
             ReadDirStream::new(dir)
                 .filter_map(|entry| async {
@@ -412,5 +473,45 @@ async fn read_file(entry: &DirEntry) -> Result<Option<(String, Vec<Command>)>, E
         Ok(Some((file_name.to_owned(), mission)))
     } else {
         Ok(None)
+    }
+}
+
+async fn store_recoding(recording: Vec<SetpointRecording>) {
+    if let Some(first_p) = recording.first() {
+        let z = recording.last().map(|p| p.z.0).unwrap_or(2.0);
+        let land_duration = Duration::from_secs_f32(z.clamp(0.0, 2.0));
+
+        let mission = vec![
+            Command::Takeoff {
+                height: Meters(0.5),
+                duration: Duration::from_secs(1),
+            },
+            Command::MoveToWaypoint {
+                x: first_p.x,
+                y: first_p.y,
+                z: first_p.z,
+                duration: Duration::from_secs(2),
+            },
+            Command::Setpoints {
+                points: recording.iter().map(|p| p.to_setpoint()).collect(),
+            },
+            Command::Land {
+                duration: land_duration,
+            },
+        ];
+
+        let mission_name = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+
+        match fs::write(
+            format!("./drone-commander/missions/recordings/flight-{mission_name}.json"),
+            serde_json::to_string(&mission).unwrap(),
+        )
+        .await
+        {
+            Ok(_) => info!("stored new recording"),
+            Err(err) => warn!("could not safe recording {err}"),
+        }
+    } else {
+        warn!("Trying store empty recording")
     }
 }

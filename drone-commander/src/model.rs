@@ -1,5 +1,6 @@
 use crate::model::State::Home;
-use drone_control::{Abort, Command, Meters, MetersPerSecond, MotionCommand, Telemetry};
+use drone_control::{Abort, Command, Meters, MetersPerSecond, MotionCommand, Setpoint, Telemetry};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug)]
@@ -42,6 +43,24 @@ pub enum Movement {
     SpeedDown,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetpointRecording {
+    pub x: Meters,
+    pub y: Meters,
+    pub z: Meters,
+    pub yaw_degrees: f32,
+}
+impl SetpointRecording {
+    pub fn to_setpoint(&self) -> Setpoint {
+        Setpoint::PositionPoint {
+            x: self.x,
+            y: self.y,
+            z: self.z,
+            yaw_degrees: self.yaw_degrees,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FreeFlightState {
     pub vx: MetersPerSecond,
@@ -50,6 +69,8 @@ pub struct FreeFlightState {
     pub z: Meters,
     pub motion_sender: mpsc::UnboundedSender<MotionCommand>,
     pub is_airborne: bool,
+    pub is_recording: bool,
+    pub recording: Vec<SetpointRecording>,
     pub speed_setting: MetersPerSecond,
     pub yaw_rate_setting: f32,
 }
@@ -94,12 +115,14 @@ impl ModeSelection {
 #[derive(Debug)]
 pub struct MissionSelectState {
     pub missions: Vec<(String, Vec<Command>)>,
+    pub recorded_missions: Vec<(String, Vec<Command>)>,
     pub selection: usize,
 }
 impl Default for MissionSelectState {
     fn default() -> Self {
         MissionSelectState {
             missions: Vec::new(),
+            recorded_missions: Vec::new(),
             selection: 0,
         }
     }

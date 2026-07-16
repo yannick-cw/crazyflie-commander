@@ -1,3 +1,4 @@
+use crate::control::low_level_engine::Setpoint;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
@@ -99,6 +100,9 @@ pub enum Command {
         speed: MetersPerSecond,
         flight_mode: FlightMode,
     },
+    Setpoints {
+        points: Vec<Setpoint>,
+    },
     // fly a bouncing pattern in the rectangle define by bl tr
     //   | ------- tr
     //   |         |
@@ -158,7 +162,7 @@ pub struct Telemetry {
     pub x_v: MetersPerSecond,
     pub y_v: MetersPerSecond,
     // pub z_v: MetersPerSecond,
-    pub yaw: f32,
+    pub yaw_degrees: f32,
     pub battery_level: BatteryLevel,
 }
 impl Telemetry {
@@ -173,7 +177,7 @@ impl Telemetry {
             x_v: MetersPerSecond(get("stateEstimate.vx", tele_log)),
             y_v: MetersPerSecond(get("stateEstimate.vy", tele_log)),
             // z_v: MetersPerSecond(get("stateEstimate.vz")),
-            yaw: get("stateEstimate.yaw", tele_log),
+            yaw_degrees: get("stateEstimate.yaw", tele_log),
             battery_level: if get("pm.state", battery_log) >= 3.0 {
                 BatteryLevel::Low
             } else {
@@ -205,7 +209,7 @@ impl Telemetry {
     //     self.z_v.0
     // }
     pub fn yaw(&self) -> f32 {
-        self.yaw
+        self.yaw_degrees
     }
     pub fn speed(&self) -> f32 {
         (self.x_v.0.powi(2) + self.y_v.0.powi(2)).sqrt()
@@ -237,7 +241,10 @@ pub trait CommandUnit {
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()>;
     async fn fly(&self, commands: impl Stream<Item = MotionCommand>) -> Res<()>;
+    // emits latest telemetry - is updates every 10ms
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
+    // emits latest telemetry - is updates every 10ms
     fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
+    // todo maybe more sense to return form run_mission
     fn mission_status(&self) -> watch::Receiver<MissionStatus>;
 }

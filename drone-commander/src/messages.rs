@@ -17,7 +17,7 @@ pub enum Msg {
 
 #[derive(Clone, Debug)]
 pub enum MissionSelectMessage {
-    MissionsLoaded(Vec<(String, Vec<Command>)>),
+    MissionsLoaded(Vec<(String, Vec<Command>)>, Vec<(String, Vec<Command>)>),
     Nav(NavigationMessage),
     Selected(Vec<Command>, String),
 }
@@ -38,6 +38,8 @@ pub enum FreeFlightMessage {
     SendNextMove,
     CommandSet,
     TakeOffDone,
+    StartRecording,
+    StopRecording,
 }
 
 #[derive(Clone, PartialEq, Copy, Debug)]

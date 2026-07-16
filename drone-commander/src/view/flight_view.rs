@@ -44,6 +44,11 @@ pub fn view(model: &Model, frame: &mut Frame) {
             (!s.is_airborne).then_some(("t", "take off", SELECTED)),
             s.is_airborne.then_some(("l", "land", WARN)),
             s.is_airborne.then_some(("h", "go home", WARN)),
+            Some(if s.is_recording {
+                ("r", "stop rec", DANGER)
+            } else {
+                ("r", "record", SELECTED)
+            }),
             Some(("x", "STOP", DANGER)),
             Some(("b", "back", WARN)),
             Some(("q", "quit", LABEL)),
@@ -78,10 +83,11 @@ pub fn view(model: &Model, frame: &mut Frame) {
     let [map_area, side] =
         Layout::horizontal([Constraint::Min(0), Constraint::Length(26)]).areas(body);
 
-    // sidebar: position · velocity · state
-    let [pos_area, vel_area, state_area] = Layout::vertical([
+    // sidebar: position · velocity · state · (recording, fills the rest)
+    let [pos_area, vel_area, state_area, rec_area] = Layout::vertical([
         Constraint::Length(5),
         Constraint::Length(5),
+        Constraint::Length(4),
         Constraint::Min(0),
     ])
     .areas(side);
@@ -94,6 +100,11 @@ pub fn view(model: &Model, frame: &mut Frame) {
     frame.render_widget(position_panel(t), pos_area);
     frame.render_widget(velocity_panel(t), vel_area);
     frame.render_widget(state_panel(t), state_area);
+    if let State::FreeFlight(s) = &model.state {
+        if s.is_recording {
+            frame.render_widget(recording_panel(s), rec_area);
+        }
+    }
     frame.render_widget(speed_gauge(t), speed_area);
 }
 
@@ -123,6 +134,26 @@ fn mission_bar(mission: Option<&MissionExecutionState>) -> Gauge<'static> {
         .gauge_style(Style::new().fg(color))
         .ratio(ratio.clamp(0.0, 1.0))
         .label(label)
+}
+
+/// A blinking red ● REC indicator with the running sample count, shown while recording.
+fn recording_panel(s: &FreeFlightState) -> Paragraph<'static> {
+    Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled(
+                " ● ",
+                Style::new()
+                    .fg(DANGER)
+                    .add_modifier(Modifier::BOLD | Modifier::RAPID_BLINK),
+            ),
+            Span::styled("REC", Style::new().fg(DANGER).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(Span::styled(
+            format!(" {} samples", s.recording.len()),
+            Style::new().fg(LABEL),
+        )),
+    ])
+    .block(panel(" RECORDING "))
 }
 
 /// Free-flight top bar: airborne status + the current speed-setting as a gauge.
