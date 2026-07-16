@@ -126,9 +126,10 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 //      d- tui records libs telemetry for recording time and stores as json
 //      d- lib gets new command::replay that takes a list of setpoints with timestamps or duration offsets from start and
 //      executes as normal thing as always <-> and lib gets the logic of slow fly to start and land or hover at finish
+// - [x] paint selected mission before flying it! and then take off t button to start
 // ---- NEXT
+// - [ ] free flight not selectable in terminals that do not support
 // --- NEXT
-// - [ ] paint selected mission before flying it! and then take off t button to start
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
@@ -136,5 +137,4 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 // - [ ] build mission planner
 // - [ ] nix for bulding executable
 // - [ ] polish: only start with flowdeck, warn on non supporting terminal free flight, set bounds and prevent out of bounds
-//     - [ ] free flight not selectable in terminals that do not support
 // - [ ] potentially re-center map to match around drone and real room

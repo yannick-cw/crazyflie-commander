@@ -57,6 +57,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
         .flatten()
         .collect(),
         _ => [
+            show_back.then_some(("t", "start mission", SELECTED)),
             Some(("x", "EMERGENCY STOP", DANGER)),
             Some(("l", "LAND", WARN)),
             show_back.then_some(("b", "back to menu", SELECTED)),

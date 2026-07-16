@@ -8,7 +8,9 @@ use crate::model::{
     Movement, SetpointRecording, State,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use drone_control::{Abort, CommandUnit, MetersPerSecond, MotionCommand, SetpointHover, Telemetry};
+use drone_control::{
+    Abort, CommandUnit, MetersPerSecond, MotionCommand, Reason, SetpointHover, Telemetry,
+};
 use drone_control::{Command, Meters};
 use futures::StreamExt;
 use ratatea::Cmd;
@@ -113,13 +115,10 @@ pub fn update_all(
                 mission,
                 name,
                 abort_sender: None,
-                mission_status: drone_control::MissionStatus::Running(None),
+                mission_status: drone_control::MissionStatus::Idle,
             };
             model.state = State::MissionExecution(execution_state);
-            (
-                model,
-                Cmd::pure(Msg::MissionExecution(MissionExecutionMessage::StartMission)),
-            )
+            (model, Cmd::none())
         }
         // sub state updates
         // ------------------------------------------------------------
@@ -418,7 +417,13 @@ fn update_key_evt(key_event: KeyEvent, model: &Model) -> Cmd<Msg> {
             }
             _ => Cmd::none(),
         },
-        KeyCode::Char('t') if key_event.is_press() => match model.state {
+        KeyCode::Char('t') if key_event.is_press() => match &model.state {
+            State::MissionExecution(MissionExecutionState {
+                mission_status:
+                    drone_control::MissionStatus::Idle
+                    | drone_control::MissionStatus::Aborted(Reason::Landing),
+                ..
+            }) => Cmd::pure(Msg::MissionExecution(MissionExecutionMessage::StartMission)),
             State::FreeFlight(_) => Cmd::pure(Msg::FreeFlight(FreeFlightMessage::Move(Start))),
             _ => Cmd::none(),
         },
