@@ -1,3 +1,4 @@
+/// Possible Errors
 #[derive(Debug, thiserror::Error)]
 pub enum MissionError {
     #[error("Failed to establish connection :{0}")]
@@ -9,5 +10,5 @@ pub enum MissionError {
     #[error("Failed while rendering")]
     RenderFailure,
 }
-
+/// Result type for interacting with this crate.
 pub type Res<A> = Result<A, MissionError>;

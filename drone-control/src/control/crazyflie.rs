@@ -18,6 +18,12 @@ use tokio::time::{MissedTickBehavior, sleep};
 use tokio::{select, time};
 use tracing::info;
 
+/// Scan the radio for a Crazyflie, connect, reset its state estimate, and start telemetry logging.
+///
+/// Returns a [`CrazyflieCommandUnit`] ready to fly.
+///
+/// # Errors
+/// Fails if no drone is found or the connection or logging setup fails.
 pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     let link_context = crazyflie_link::LinkContext::new();
     let found = link_context.scan([0xE7; 5]).await?;
@@ -87,6 +93,9 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     })
 }
 
+/// A connected Crazyflie driving one drone over the radio link.
+///
+/// Created by [`setup_link`]; the [`CommandUnit`] implementation is how you fly it.
 #[derive(Debug)]
 pub struct CrazyflieCommandUnit {
     autopilot: Vehicle,

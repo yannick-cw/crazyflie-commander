@@ -75,6 +75,10 @@ pub enum FlightMode {
     BodyFrame,
 }
 
+/// A single high-level flight instruction.
+///
+/// A mission is a list of `Command`s executed by [`CommandUnit::run_mission`].
+/// Positions are relative to the takeoff point unless a variant states otherwise.
 #[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Command {
     Takeoff {
@@ -239,6 +243,10 @@ pub enum MotionCommand {
     Stop,
 }
 
+/// Control interface for one crazyflie: run missions, fly manually and observe live state.
+///
+/// Implemented by [`crate::CrazyflieCommandUnit`], create with [`crate::setup_link`].
+/// Run a mission with [`run_mission`](Self::run_mission) or fly live with [`fly`](Self::fly).
 #[allow(async_fn_in_trait)]
 pub trait CommandUnit {
     async fn run_mission(

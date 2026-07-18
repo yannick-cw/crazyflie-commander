@@ -2,6 +2,11 @@ use crate::control::command_unit::{Meters, MetersPerSecond, Telemetry};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// A single target for the low-level commander, streamed at high rate.
+///
+/// [`VelocityPoint`](Self::VelocityPoint) sets a body-frame velocity.
+/// [`PositionPoint`](Self::PositionPoint) sets an absolute position relative to takeoff.
+/// Used to replay a recorded flight via [`crate::Command::Setpoints`].
 #[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Setpoint {
     VelocityPoint {

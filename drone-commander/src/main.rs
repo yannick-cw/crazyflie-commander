@@ -69,8 +69,8 @@ async fn main() -> color_eyre::Result<()> {
 // - [x] paint selected mission before flying it! and then take off t button to start
 // - [x] free flight not selectable in terminals that do not support
 // - [x] refactor key_to_msg into each update / file
+// - [x] proper pubic facing API docs #![warn(missing_docs)] in both libs
 // ---- NEXT
-// - [ ] proper pubic facing API docs #![warn(missing_docs)] in both libs
 // --- NEXT
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
