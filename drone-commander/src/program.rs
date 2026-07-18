@@ -1,13 +1,12 @@
-use crate::pages::free_flight::Movement::{Land, Start};
-use crate::pages::free_flight::Msg::{Abort, CommandSet, Move, StartRecording, StopRecording};
-use crate::pages::free_flight::{SetpointRecording, movement_cmd_from_key};
+use crate::pages::free_flight::Msg::CommandSet;
+use crate::pages::free_flight::SetpointRecording;
 use crate::pages::home::ModeSelection;
-use crate::pages::mission_execution::Msg::{EmergencyAbort, MissionUpdate, SafeLand, StartMission};
+use crate::pages::mission_execution::Msg::MissionUpdate;
 use crate::pages::{free_flight, home, mission_execution, mission_select};
 use crate::program::NavigationMessage::*;
 use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use drone_control::{CommandUnit, Reason, Telemetry};
+use drone_control::{CommandUnit, Telemetry};
 use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub};
 use ratatui::Frame;
@@ -47,7 +46,6 @@ pub enum Msg {
     Key(KeyEvent),
     Resize,
     Quit,
-    ToHomeScreen,
     Home(home::Msg),
     MissionSelect(mission_select::Msg),
     MissionExecution(mission_execution::Msg),
@@ -91,10 +89,10 @@ impl<U: CommandUnit> Ratatea for Program<U> {
         )
     }
 
-    fn update(&self, msg: Self::Msg, model: Self::Model) -> (Self::Model, Cmd<Self::Msg>) {
+    fn update(&self, msg: Self::Msg, m: Self::Model) -> (Self::Model, Cmd<Self::Msg>) {
         let command_unit = self.command_unit;
-        let mut model1: Model = model;
-        match (&mut model1.state, msg) {
+        let mut model: Model = m;
+        match (&mut model.state, msg) {
             (
                 s,
                 Msg::TelemetryUpdate(
@@ -107,7 +105,7 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                     },
                 ),
             ) => {
-                model1.telemetry = tele;
+                model.telemetry = tele;
                 if let State::FreeFlight(flight_state) = s
                     && flight_state.is_recording
                 {
@@ -120,24 +118,17 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                         yaw_degrees: yaw,
                     });
                 };
-                (model1, Cmd::none())
+                (model, Cmd::none())
             }
             // key events
             (_, Msg::Key(key_event)) => {
-                let key_cmd = update_key_evt(key_event, &model1);
-                (model1, key_cmd)
+                let key_cmd = update_key_evt(key_event, &model);
+                (model, key_cmd)
             }
             (_, Msg::Quit) => {
-                model1.exit = true;
-                (model1, Cmd::none())
+                model.exit = true;
+                (model, Cmd::none())
             }
-            (_, Msg::ToHomeScreen) => (
-                Model {
-                    state: State::default(),
-                    ..model1
-                },
-                Cmd::none(),
-            ),
             // ------------------------------------------------------------
             // communication towards parent to change view
             // ------------------------------------------------------------
@@ -147,8 +138,8 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                         State::MissionSelect(mission_select::Model::default()),
                         Cmd::pure(Msg::MissionSelect(mission_select::Msg::LoadMissions)),
                     ),
-                    ModeSelection::MissionPlanItem => (model1.state, Cmd::none()),
-                    ModeSelection::FreeFlightItem if model1.terminal_supports_enhancements => {
+                    ModeSelection::MissionPlanItem => (model.state, Cmd::none()),
+                    ModeSelection::FreeFlightItem if model.terminal_supports_enhancements => {
                         let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
                         let commands = UnboundedReceiverStream::new(motion_receiver);
                         (
@@ -156,38 +147,50 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                             Cmd::new(command_unit.fly(commands), |_| Msg::FreeFlight(CommandSet)),
                         )
                     }
-                    ModeSelection::FreeFlightItem => (model1.state, Cmd::none()),
+                    ModeSelection::FreeFlightItem => (model.state, Cmd::none()),
                 };
-                model1.state = new_state;
-                (model1, cmd)
+                model.state = new_state;
+                (model, cmd)
             }
-            (_, Msg::MissionSelect(mission_select::Msg::Selected(mission, name))) => {
+            (_, Msg::MissionSelect(mission_select::Msg::ExitSelected(mission, name))) => {
                 let execution_state = mission_execution::Model::new(mission, name);
-                model1.state = State::MissionExecution(execution_state);
-                (model1, Cmd::none())
+                model.state = State::MissionExecution(execution_state);
+                (model, Cmd::none())
             }
+            (
+                _,
+                Msg::MissionExecution(mission_execution::Msg::ExitPage)
+                | Msg::MissionSelect(mission_select::Msg::ExitPage)
+                | Msg::FreeFlight(free_flight::Msg::ExitPage),
+            ) => (
+                Model {
+                    state: State::default(),
+                    ..model
+                },
+                Cmd::none(),
+            ),
             // sub state updates
             // ------------------------------------------------------------
             (State::Home(home_state), Msg::Home(msg)) => {
                 let home_cmd = home::update(home_state, msg).lift_msg(Msg::Home);
-                (model1, home_cmd)
+                (model, home_cmd)
             }
             (State::MissionSelect(select_state), Msg::MissionSelect(msg)) => {
                 let next_cmd =
                     mission_select::update(select_state, msg).lift_msg(Msg::MissionSelect);
-                (model1, next_cmd)
+                (model, next_cmd)
             }
             (State::MissionExecution(state), Msg::MissionExecution(msg)) => {
                 let next_cmd = mission_execution::update(command_unit, state, msg)
                     .lift_msg(Msg::MissionExecution);
-                (model1, next_cmd)
+                (model, next_cmd)
             }
             (State::FreeFlight(state), Msg::FreeFlight(msg)) => {
                 let next_msg = free_flight::update(state, msg).lift_msg(Msg::FreeFlight);
-                (model1, next_msg)
+                (model, next_msg)
             }
             // (State::MissionPlan(), _) => (model1, Cmd::none()),
-            _ => (model1, Cmd::none()),
+            _ => (model, Cmd::none()),
         }
     }
 
@@ -229,83 +232,22 @@ impl<U: CommandUnit> Ratatea for Program<U> {
 }
 
 fn update_key_evt(key_event: KeyEvent, model: &Model) -> Cmd<Msg> {
-    match key_event.code {
-        // movement keys in flight mode
-        k if ['w', 'a', 's', 'd', 'h'].into_iter().any(|c| k.is_char(c))
-            | k.is_left()
-            | k.is_right()
-            | k.is_down()
-            | k.is_up() =>
-        {
-            match &model.state {
-                State::FreeFlight(s) => {
-                    movement_cmd_from_key(key_event, s).lift_msg(Msg::FreeFlight)
-                }
-                _ => Cmd::none(),
-            }
-        }
-        KeyCode::Esc | KeyCode::Char('q') if key_event.is_press() => Cmd::pure(Msg::Quit),
-        KeyCode::Char('c') | KeyCode::Char('C')
+    match (key_event.code, &model.state) {
+        (KeyCode::Esc | KeyCode::Char('q'), _) if key_event.is_press() => Cmd::pure(Msg::Quit),
+        (KeyCode::Char('c') | KeyCode::Char('C'), _)
             if key_event.modifiers == KeyModifiers::CONTROL && key_event.is_press() =>
         {
             Cmd::pure(Msg::Quit)
         }
-        KeyCode::Char('j') | KeyCode::Down if key_event.is_press() => {
-            navigation_cmd(&model.state, Down)
+        (_, State::MissionSelect(s)) => {
+            mission_select::map_key_evt(key_event, s).lift_msg(Msg::MissionSelect)
         }
-        KeyCode::Char('k') | KeyCode::Up if key_event.is_press() => {
-            navigation_cmd(&model.state, Up)
+        (_, State::Home(s)) => home::map_key_evt(key_event, s).lift_msg(Msg::Home),
+        (_, State::FreeFlight(s)) => {
+            free_flight::map_key_evt(key_event, s).lift_msg(Msg::FreeFlight)
         }
-        KeyCode::Char('l') if key_event.is_press() => match model.state {
-            State::MissionExecution(_) => Cmd::pure(Msg::MissionExecution(SafeLand)),
-            State::FreeFlight(_) => Cmd::pure(Msg::FreeFlight(Move(Land))),
-            _ => Cmd::none(),
-        },
-        KeyCode::Char('b') if key_event.is_press() => match &model.state {
-            State::MissionExecution(mission_execution::Model {
-                mission_status:
-                    drone_control::MissionStatus::Idle | drone_control::MissionStatus::Aborted(_),
-                ..
-            }) => Cmd::pure(Msg::ToHomeScreen),
-            State::FreeFlight(free_flight::Model {
-                is_airborne: false, ..
-            }) => Cmd::pure(Msg::ToHomeScreen),
-            State::MissionSelect(_) => Cmd::pure(Msg::ToHomeScreen),
-            _ => Cmd::none(),
-        },
-        KeyCode::Char('x') if key_event.is_press() => match model.state {
-            State::MissionExecution(_) => Cmd::pure(Msg::MissionExecution(EmergencyAbort)),
-            State::FreeFlight(_) => Cmd::pure(Msg::FreeFlight(Abort)),
-            _ => Cmd::none(),
-        },
-        KeyCode::Char('r') if key_event.is_press() => match &model.state {
-            State::FreeFlight(flight_state) if !flight_state.is_recording => {
-                Cmd::pure(Msg::FreeFlight(StartRecording))
-            }
-            State::FreeFlight(flight_state) if flight_state.is_recording => {
-                Cmd::pure(Msg::FreeFlight(StopRecording))
-            }
-            _ => Cmd::none(),
-        },
-        KeyCode::Char('t') if key_event.is_press() => match &model.state {
-            State::MissionExecution(mission_execution::Model {
-                mission_status:
-                    drone_control::MissionStatus::Idle
-                    | drone_control::MissionStatus::Aborted(Reason::Landing),
-                ..
-            }) => Cmd::pure(Msg::MissionExecution(StartMission)),
-            State::FreeFlight(_) => Cmd::pure(Msg::FreeFlight(Move(Start))),
-            _ => Cmd::none(),
-        },
-        KeyCode::Enter if key_event.is_press() => navigation_cmd(&model.state, Select),
-        _ => Cmd::none(),
-    }
-}
-
-fn navigation_cmd(state: &State, nav: NavigationMessage) -> Cmd<Msg> {
-    match state {
-        State::Home(_) => Cmd::pure(Msg::Home(home::Msg::Nav(nav))),
-        State::MissionSelect(_) => Cmd::pure(Msg::MissionSelect(mission_select::Msg::Nav(nav))),
-        _ => Cmd::none(),
+        (_, State::MissionExecution(s)) => {
+            mission_execution::map_key_evt(key_event, s).lift_msg(Msg::MissionExecution)
+        }
     }
 }

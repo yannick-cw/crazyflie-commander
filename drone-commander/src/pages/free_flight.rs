@@ -1,5 +1,8 @@
 use crate::pages::free_flight::Movement::*;
-use crate::pages::free_flight::Msg::CommandSet;
+use crate::pages::free_flight::Msg::{
+    Abort, CommandSet, ExitPage, Move, StartRecording, StopRecording,
+};
+use Msg::{SendNextMove, TakeOffDone};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use drone_control::{Command, Meters, MetersPerSecond, MotionCommand, Setpoint, SetpointHover};
 use ratatea::Cmd;
@@ -69,6 +72,7 @@ pub enum Msg {
     TakeOffDone,
     StartRecording,
     StopRecording,
+    ExitPage,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -88,19 +92,19 @@ pub enum Movement {
 pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
     let sender = model.motion_sender.clone();
     match msg {
-        Msg::Move(Vx(new_x)) => {
+        Move(Vx(new_x)) => {
             model.vx = new_x;
-            Cmd::pure(Msg::SendNextMove)
+            Cmd::pure(SendNextMove)
         }
-        Msg::Move(Vy(new_y)) => {
+        Move(Vy(new_y)) => {
             model.vy = new_y;
-            Cmd::pure(Msg::SendNextMove)
+            Cmd::pure(SendNextMove)
         }
-        Msg::Move(YawRate(yaw_rate)) => {
+        Move(YawRate(yaw_rate)) => {
             model.yaw_rate = yaw_rate;
-            Cmd::pure(Msg::SendNextMove)
+            Cmd::pure(SendNextMove)
         }
-        Msg::Move(Land) => {
+        Move(Land) => {
             model.vx = MetersPerSecond(0.0);
             model.vy = MetersPerSecond(0.0);
             model.z = Meters(0.0);
@@ -109,7 +113,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
                 CommandSet
             })
         }
-        Msg::Move(GoHome) => {
+        Move(GoHome) => {
             model.vx = MetersPerSecond(0.0);
             model.vy = MetersPerSecond(0.0);
             model.z = Meters(0.0);
@@ -118,16 +122,16 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
                 CommandSet
             })
         }
-        Msg::Move(Start) => {
+        Move(Start) => {
             model.vx = MetersPerSecond(0.0);
             model.vy = MetersPerSecond(0.0);
             model.z = Meters(0.5);
             Cmd::new(
                 async move { sender.send(MotionCommand::TakeOff(Meters(0.5))) },
-                |_| Msg::TakeOffDone,
+                |_| TakeOffDone,
             )
         }
-        Msg::SendNextMove if model.is_airborne => {
+        SendNextMove if model.is_airborne => {
             let vx = model.vx;
             let vy = model.vy;
             let z = model.z;
@@ -144,9 +148,9 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
                 |_| CommandSet,
             )
         }
-        Msg::SendNextMove => Cmd::none(),
+        SendNextMove => Cmd::none(),
         CommandSet => Cmd::none(),
-        Msg::Abort => {
+        Abort => {
             model.vx = MetersPerSecond(0.0);
             model.vy = MetersPerSecond(0.0);
             model.z = Meters(0.0);
@@ -154,29 +158,31 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
                 CommandSet
             })
         }
-        Msg::TakeOffDone => {
+        TakeOffDone => {
             model.is_airborne = true;
             Cmd::none()
         }
-        Msg::Move(SpeedUp) => {
+        Move(SpeedUp) => {
             model.yaw_rate_setting += 10.0;
             model.speed_setting += MetersPerSecond(0.1);
             Cmd::none()
         }
-        Msg::Move(SpeedDown) => {
+        Move(SpeedDown) => {
             model.yaw_rate_setting -= 10.0;
             model.speed_setting -= MetersPerSecond(0.1);
             Cmd::none()
         }
-        Msg::StartRecording => {
+        StartRecording => {
             model.is_recording = true;
             Cmd::none()
         }
-        Msg::StopRecording => {
+        StopRecording => {
             let recording = std::mem::take(&mut model.recording);
             model.is_recording = false;
             Cmd::new(store_recoding(recording), |_| CommandSet)
         }
+        // handled by parent
+        ExitPage => Cmd::none(),
     }
 }
 
@@ -222,7 +228,30 @@ async fn store_recoding(recording: Vec<SetpointRecording>) {
     }
 }
 
-pub fn movement_cmd_from_key(k: KeyEvent, s: &Model) -> Cmd<Msg> {
+pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {
+    match k.code {
+        // movement keys in flight mode
+        code if ['w', 'a', 's', 'd', 'h']
+            .into_iter()
+            .any(|c| code.is_char(c))
+            | code.is_left()
+            | code.is_right()
+            | code.is_down()
+            | code.is_up() =>
+        {
+            movement_cmd_from_key(k, s)
+        }
+        KeyCode::Char('l') if k.is_press() => Cmd::pure(Move(Land)),
+        KeyCode::Char('x') if k.is_press() => Cmd::pure(Abort),
+        KeyCode::Char('r') if k.is_press() && !s.is_recording => Cmd::pure(StartRecording),
+        KeyCode::Char('r') if k.is_press() && s.is_recording => Cmd::pure(StopRecording),
+        KeyCode::Char('t') if k.is_press() => Cmd::pure(Move(Start)),
+        KeyCode::Char('b') if k.is_press() && !s.is_airborne => Cmd::pure(ExitPage),
+        _ => Cmd::none(),
+    }
+}
+
+fn movement_cmd_from_key(k: KeyEvent, s: &Model) -> Cmd<Msg> {
     let axis_speed = s.speed_setting;
     let zero_ms = MetersPerSecond(0.0);
     let yaw_rate = s.yaw_rate_setting;

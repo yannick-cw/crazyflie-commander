@@ -68,13 +68,16 @@ async fn main() -> color_eyre::Result<()> {
 //      executes as normal thing as always <-> and lib gets the logic of slow fly to start and land or hover at finish
 // - [x] paint selected mission before flying it! and then take off t button to start
 // - [x] free flight not selectable in terminals that do not support
+// - [x] refactor key_to_msg into each update / file
 // ---- NEXT
+// - [ ] proper pubic facing API docs #![warn(missing_docs)] in both libs
 // --- NEXT
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] "connection lost" warning or whatever when unplugged
 // - [ ] build mission planner
+// - [ ] improve file read / write handling: location, if no dir...
 // - [ ] nix for bulding executable
 // - [ ] polish: only start with flowdeck, warn on non supporting terminal free flight, set bounds and prevent out of bounds
 // - [ ] potentially re-center map to match around drone and real room

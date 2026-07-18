@@ -1,4 +1,7 @@
+use crate::pages::mission_select::Msg::*;
 use crate::program::NavigationMessage;
+use crate::program::NavigationMessage::{Down, Select, Up};
+use crossterm::event::{KeyCode, KeyEvent};
 use drone_control::Command;
 use futures::StreamExt;
 use ratatea::Cmd;
@@ -32,41 +35,40 @@ pub enum Msg {
     LoadMissions,
     MissionsLoaded(Vec<(String, Vec<Command>)>, Vec<(String, Vec<Command>)>),
     Nav(NavigationMessage),
-    Selected(Vec<Command>, String),
+    ExitSelected(Vec<Command>, String),
+    ExitPage,
 }
 
 // update ------------------------------------
 pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
     let total_missions = model.missions.len() + model.recorded_missions.len();
     match msg {
-        Msg::Nav(NavigationMessage::Down) if total_missions > 0 => {
+        Nav(Down) if total_missions > 0 => {
             model.selection = (model.selection + 1).min(total_missions - 1);
             Cmd::none()
         }
-        Msg::Nav(NavigationMessage::Up) if total_missions > 0 => {
+        Nav(Up) if total_missions > 0 => {
             model.selection = model.selection.saturating_sub(1);
             Cmd::none()
         }
         // sends message out
-        Msg::Nav(NavigationMessage::Select) if total_missions > 0 => {
+        Nav(Select) if total_missions > 0 => {
             let (name, mission) = model
                 .missions
                 .iter()
                 .chain(&model.recorded_missions)
                 .nth(model.selection)
                 .unwrap();
-            let message = Msg::Selected(mission.clone(), name.clone());
+            let message = ExitSelected(mission.clone(), name.clone());
             Cmd::pure(message)
         }
-        Msg::Nav(_) => Cmd::none(),
-        // handled by parent
-        Msg::Selected(_, _) => Cmd::none(),
-        Msg::MissionsLoaded(missions, recorded_m) => {
+        Nav(_) => Cmd::none(),
+        MissionsLoaded(missions, recorded_m) => {
             model.missions = missions;
             model.recorded_missions = recorded_m;
             Cmd::none()
         }
-        Msg::LoadMissions => Cmd::new(
+        LoadMissions => Cmd::new(
             async {
                 (
                     read_missions("missions").await,
@@ -75,6 +77,9 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
             },
             |(m, rm)| Msg::MissionsLoaded(m, rm),
         ),
+        // ---- handle by parent
+        ExitSelected(_, _) => Cmd::none(),
+        ExitPage => Cmd::none(),
     }
 }
 
@@ -115,5 +120,15 @@ async fn read_file(entry: &DirEntry) -> Result<Option<(String, Vec<Command>)>, E
         Ok(Some((file_name.to_owned(), mission)))
     } else {
         Ok(None)
+    }
+}
+
+pub fn map_key_evt(k: KeyEvent, _s: &Model) -> Cmd<Msg> {
+    match k.code {
+        KeyCode::Char('j') | KeyCode::Down if k.is_press() => Cmd::pure(Nav(Down)),
+        KeyCode::Char('k') | KeyCode::Up if k.is_press() => Cmd::pure(Nav(Up)),
+        KeyCode::Enter if k.is_press() => Cmd::pure(Nav(Select)),
+        KeyCode::Char('b') if k.is_press() => Cmd::pure(ExitPage),
+        _ => Cmd::none(),
     }
 }

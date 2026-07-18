@@ -1,4 +1,7 @@
 use crate::program::NavigationMessage;
+use crate::program::NavigationMessage::{Down, Select, Up};
+use Msg::Nav;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatea::Cmd;
 
 // model -----------------------------------------
@@ -40,15 +43,24 @@ pub enum Msg {
 // update -----------------------------------------
 pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
     match msg {
-        Msg::Nav(NavigationMessage::Up) => {
+        Nav(NavigationMessage::Up) => {
             model.selected_mode = model.selected_mode.prev();
             Cmd::none()
         }
-        Msg::Nav(NavigationMessage::Down) => {
+        Nav(NavigationMessage::Down) => {
             model.selected_mode = model.selected_mode.next();
             Cmd::none()
         }
         // handled by parent - transition out
-        Msg::Nav(NavigationMessage::Select) => Cmd::none(),
+        Nav(NavigationMessage::Select) => Cmd::none(),
+    }
+}
+
+pub fn map_key_evt(k: KeyEvent, _s: &Model) -> Cmd<Msg> {
+    match k.code {
+        KeyCode::Char('j') | KeyCode::Down if k.is_press() => Cmd::pure(Nav(Down)),
+        KeyCode::Char('k') | KeyCode::Up if k.is_press() => Cmd::pure(Nav(Up)),
+        KeyCode::Enter if k.is_press() => Cmd::pure(Nav(Select)),
+        _ => Cmd::none(),
     }
 }
