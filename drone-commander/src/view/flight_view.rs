@@ -5,7 +5,7 @@ use ratatui::{
     symbols::Marker,
     text::{Line, Span},
     widgets::{
-        Gauge, Paragraph, Widget,
+        Gauge, Paragraph, Widget, Wrap,
         canvas::{Canvas, Circle, Line as CanvasLine},
     },
 };
@@ -14,7 +14,7 @@ use crate::pages::{free_flight, mission_execution};
 use crate::program::{Model, State};
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
-use drone_control::{Command, Meters, MissionStatus, Setpoint, Telemetry};
+use drone_control::{Command, LinkMode, Meters, MissionStatus, Setpoint, Telemetry};
 // AI GENERATED
 
 /// Speed (m/s) that maps to a full gauge / "hot" colour.
@@ -35,6 +35,9 @@ pub fn view(model: &Model, frame: &mut Frame) {
     // the back-to-menu hint only makes sense once the mission is no longer running
     let show_back =
         matches!(mission, Some(s) if !matches!(s.mission_status, MissionStatus::Running(_)));
+    // link-mode toggle is only offered when grounded and a command supports trajectory upload
+    let show_upload_toggle =
+        show_back && mission.is_some_and(|s| s.trajectory_upload_available());
 
     let keys: Vec<(&str, &str, Color)> = match &model.state {
         // free flight has its own control scheme
@@ -58,6 +61,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
         .collect(),
         _ => [
             show_back.then_some(("t", "start mission", SELECTED)),
+            show_upload_toggle.then_some(("u", "toggle upload", BRAND)),
             Some(("x", "EMERGENCY STOP", DANGER)),
             Some(("l", "LAND", WARN)),
             show_back.then_some(("b", "back to menu", SELECTED)),
@@ -101,6 +105,11 @@ pub fn view(model: &Model, frame: &mut Frame) {
     frame.render_widget(position_panel(t), pos_area);
     frame.render_widget(velocity_panel(t), vel_area);
     frame.render_widget(state_panel(t), state_area);
+    if let State::MissionExecution(s) = &model.state {
+        if s.link_mode == LinkMode::OnVehicle {
+            frame.render_widget(upload_info(), rec_area);
+        }
+    }
     if let State::FreeFlight(s) = &model.state {
         if s.is_recording {
             frame.render_widget(recording_panel(s), rec_area);
@@ -160,6 +169,22 @@ fn recording_panel(s: &free_flight::Model) -> Paragraph<'static> {
         )),
     ])
     .block(panel(" RECORDING "))
+}
+
+/// Shown while the trajectory-upload link mode is selected.
+fn upload_info() -> Paragraph<'static> {
+    Paragraph::new(vec![
+        Line::from(Span::styled(
+            "trajectory upload",
+            Style::new().fg(BRAND).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "runs onboard the drone; finishes even if the radio link drops",
+            Style::new().fg(LABEL),
+        )),
+    ])
+    .wrap(Wrap { trim: true })
+    .block(panel(" LINK "))
 }
 
 /// Free-flight top bar: airborne status + the current speed-setting as a gauge.

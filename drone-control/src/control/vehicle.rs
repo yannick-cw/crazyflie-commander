@@ -1,13 +1,14 @@
 use crate::control::command_unit::SetpointHover;
 use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
-use crate::control::trajectory::trajectory::CompressedTrajectory;
+use crate::control::trajectory::orbit_trajectory::CompressedTrajectory;
 use crate::errors::MissionError::UploadError;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::high_level_commander::TRAJECTORY_TYPE_POLY4D_COMPRESSED;
 use crazyflie_lib::subsystems::memory::{MemoryType, TrajectoryMemory};
 use std::fmt::{Debug, Formatter};
+use std::ops::Add;
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time;
@@ -212,8 +213,10 @@ impl Vehicle {
             ))??;
 
         trajectory_memory
-            .write_compressed(&start, &segments, 0)
+            .write_compressed(start, segments, 0)
             .await?;
+
+        self.cf.memory.close_memory(trajectory_memory).await?;
 
         // Register the uploaded trajectory under an ID the high-level commander can run.
         info!("Defining trajectory...");
@@ -237,8 +240,8 @@ impl Vehicle {
         info!("Starting trajectory...");
         self.cf
             .high_level_commander
-            .start_trajectory(trajectory_id.0, 1.0, true, false, false, None)
+            .start_trajectory(trajectory_id.0, 1.0, true, true, false, None)
             .await?;
-        Ok(sleep(trajectory_duration).await)
+        Ok(sleep(trajectory_duration.add(Duration::from_millis(200))).await)
     }
 }

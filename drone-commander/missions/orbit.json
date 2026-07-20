@@ -16,8 +16,7 @@
         "nanos": 0
       },
       "orbits": 3,
-      "z": 0.5,
-      "link_mode": "OnVehicle"
+      "z": 0.5
     }
   },
   {

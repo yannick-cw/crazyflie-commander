@@ -73,7 +73,8 @@ async fn main() -> color_eyre::Result<()> {
 // - [x] proper pubic facing API docs #![warn(missing_docs)] in both libs
 // ---- NEXT
 // - [ ] trajectory generation + upload of offline flying
-//   - [ ] port orbit -> easyish? MISSING: yaw
+//   - [ ] port orbit -> easyish? MISSING: yaw + UI U button to fly on board if possible
+//   - [ ] take off again
 //   - [ ] port smooth flying -> easyish?
 //   - [x] port move / move to -> easy = single point WONT DO
 //   - [x] not port billiard, as reactive - relative
@@ -81,6 +82,7 @@ async fn main() -> color_eyre::Result<()> {
 //   - [x] could also use an example in the trajectory.rs
 //   - [x] improve compressed docs: mention bezier, its cubic, not quadratic for 3, bc. first point is always dropped, only h1,h2,e and e is start for next segment, trajectory type to be passed to high level commander
 // --- NEXT
+// - [ ] maybe refactor whole link mode state approach - could be cleaner - e.g. different checks for if upload is possible, could all be encoded in mission: ... in the model or so
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?

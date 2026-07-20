@@ -1,3 +1,4 @@
+use crate::LinkMode::StreamToVehicle;
 use crate::control::low_level_engine::Setpoint;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
@@ -130,6 +131,7 @@ pub enum Command {
         orbital_period: Duration,
         orbits: usize,
         z: Meters,
+        #[serde(default)]
         link_mode: LinkMode,
     },
     Hover {
@@ -140,10 +142,40 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+impl Command {
+    pub fn to_link_mode(self, link_mode: LinkMode) -> Self {
+        match self {
+            Command::Orbit {
+                radius,
+                orbital_period,
+                orbits,
+                z,
+                ..
+            } => Command::Orbit {
+                radius,
+                orbital_period,
+                orbits,
+                z,
+                link_mode,
+            },
+            cmd => cmd,
+        }
+    }
+
+    pub fn has_link_mode(&self) -> bool {
+        matches!(self, Command::Orbit { .. })
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum LinkMode {
     OnVehicle,
     StreamToVehicle,
+}
+impl Default for LinkMode {
+    fn default() -> Self {
+        StreamToVehicle
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]

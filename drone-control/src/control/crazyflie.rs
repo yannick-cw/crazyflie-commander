@@ -5,7 +5,7 @@ use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::setpoints::run_setpoints;
 use crate::control::patterns::smooth_path::run_smooth_path;
-use crate::control::trajectory::trajectory::orbit_to_trajectory;
+use crate::control::trajectory::orbit_trajectory::orbit_to_trajectory;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;

@@ -1,1 +1,1 @@
-pub mod trajectory;
+pub mod orbit_trajectory;
