@@ -1,3 +1,4 @@
+use crate::LinkMode::StreamToVehicle;
 use crate::control::command_unit::Command::{
     BilliardBox, Land, MoveToWaypoint, Orbit, SmoothPath, Takeoff,
 };
@@ -44,6 +45,7 @@ pub fn orbit() -> Vec<Command> {
             orbital_period: Duration::from_secs(4),
             orbits: 5,
             z: Meters(0.5),
+            link_mode: StreamToVehicle,
         },
         MoveToWaypoint {
             x: Meters(0.0),

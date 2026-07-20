@@ -16,7 +16,19 @@ pub enum Abort {
 }
 
 #[derive(
-    Debug, Default, Clone, PartialEq, PartialOrd, Serialize, Deserialize, Copy, Add, Sub, Mul, Div,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    Deserialize,
+    Copy,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Neg,
 )]
 pub struct Meters(pub f32);
 
@@ -118,6 +130,7 @@ pub enum Command {
         orbital_period: Duration,
         orbits: usize,
         z: Meters,
+        link_mode: LinkMode,
     },
     Hover {
         duration: Duration,
@@ -125,6 +138,12 @@ pub enum Command {
     Land {
         duration: Duration,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub enum LinkMode {
+    OnVehicle,
+    StreamToVehicle,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]

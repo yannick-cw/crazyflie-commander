@@ -11,6 +11,7 @@ mod program;
 mod view;
 
 #[tokio::main]
+// color_eyre:Result<()> is the alternative to the std lib `Box<dyn Error + Send + Sync + 'static>` case
 async fn main() -> color_eyre::Result<()> {
     let file_appender = tracing_appender::rolling::never("./logs", "commander.log");
     tracing_subscriber::fmt()
@@ -71,6 +72,14 @@ async fn main() -> color_eyre::Result<()> {
 // - [x] refactor key_to_msg into each update / file
 // - [x] proper pubic facing API docs #![warn(missing_docs)] in both libs
 // ---- NEXT
+// - [ ] trajectory generation + upload of offline flying
+//   - [ ] port orbit -> easyish? MISSING: yaw
+//   - [ ] port smooth flying -> easyish?
+//   - [x] port move / move to -> easy = single point WONT DO
+//   - [x] not port billiard, as reactive - relative
+//   - [x] example usage to lib as example? https://github.com/bitcraze/crazyflie-lib-rs/blob/main/examples/trajectory.rs extend this
+//   - [x] could also use an example in the trajectory.rs
+//   - [x] improve compressed docs: mention bezier, its cubic, not quadratic for 3, bc. first point is always dropped, only h1,h2,e and e is start for next segment, trajectory type to be passed to high level commander
 // --- NEXT
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
@@ -79,5 +88,8 @@ async fn main() -> color_eyre::Result<()> {
 // - [ ] build mission planner
 // - [ ] improve file read / write handling: location, if no dir...
 // - [ ] nix for bulding executable
-// - [ ] polish: only start with flowdeck, warn on non supporting terminal free flight, set bounds and prevent out of bounds
+// - [ ] polish: only start with flowdeck, warn on non supporting terminal free flight,
 // - [ ] potentially re-center map to match around drone and real room
+// - [ ] Anti-crash: read the 5 ranges each tick, slow/stop when the travel-direction one drops under ~0.5 m
+// - [ ] Spin-scan: hover + slow yaw, accumulate ranges + pose into a 2D room outline at that height - render??
+// - [ ] Localize (maybe, very difficult stretch): pre-scan room with iPhone, match live ranges to the model → inject extPos to correct flow drift -> achieve awesome positioning???

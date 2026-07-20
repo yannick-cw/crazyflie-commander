@@ -1,8 +1,12 @@
 use crate::control::command_unit::SetpointHover;
 use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
+use crate::control::trajectory::trajectory::CompressedTrajectory;
+use crate::errors::MissionError::UploadError;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
+use crazyflie_lib::subsystems::high_level_commander::TRAJECTORY_TYPE_POLY4D_COMPRESSED;
+use crazyflie_lib::subsystems::memory::{MemoryType, TrajectoryMemory};
 use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 use tokio::sync::watch;
@@ -22,6 +26,8 @@ impl Debug for Vehicle {
             .finish()
     }
 }
+
+pub struct TrajectoryId(pub u8);
 
 impl Vehicle {
     pub fn new(cf: Crazyflie, telemetry: watch::Receiver<Telemetry>) -> Self {
@@ -175,5 +181,64 @@ impl Vehicle {
         self.notify_setpoint_stop().await?;
 
         Ok(())
+    }
+
+    pub async fn upload_compressed_trajectory(
+        &self,
+        CompressedTrajectory {
+            start, segments, ..
+        }: &CompressedTrajectory,
+    ) -> Res<TrajectoryId> {
+        info!("Uploading compressed trajectory...");
+        let trajectory_id = TrajectoryId(1);
+        // Open the trajectory memory and upload the segments.
+        let memory_device = self
+            .cf
+            .memory
+            .get_memories(Some(MemoryType::Trajectory))
+            .pop()
+            .cloned()
+            .ok_or(UploadError(
+                "No trajectory memory device found.".to_string(),
+            ))?;
+
+        let trajectory_memory: TrajectoryMemory = self
+            .cf
+            .memory
+            .open_memory(memory_device)
+            .await
+            .ok_or(UploadError(
+                "Trajectory memory already open or not found.".to_string(),
+            ))??;
+
+        trajectory_memory
+            .write_compressed(&start, &segments, 0)
+            .await?;
+
+        // Register the uploaded trajectory under an ID the high-level commander can run.
+        info!("Defining trajectory...");
+        self.cf
+            .high_level_commander
+            .define_trajectory(
+                trajectory_id.0,
+                0,
+                segments.len() as u8,
+                Some(TRAJECTORY_TYPE_POLY4D_COMPRESSED),
+            )
+            .await?;
+        Ok(trajectory_id)
+    }
+
+    pub async fn run_trajectory(
+        &self,
+        trajectory_id: TrajectoryId,
+        trajectory_duration: Duration,
+    ) -> Res<()> {
+        info!("Starting trajectory...");
+        self.cf
+            .high_level_commander
+            .start_trajectory(trajectory_id.0, 1.0, true, false, false, None)
+            .await?;
+        Ok(sleep(trajectory_duration).await)
     }
 }

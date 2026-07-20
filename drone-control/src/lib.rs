@@ -18,8 +18,8 @@ mod control;
 mod utils;
 
 pub use control::command_unit::{
-    Abort, Command, CommandUnit, Meters, MetersPerSecond, MissionStatus, MotionCommand, Progress,
-    Reason, SetpointHover, Telemetry,
+    Abort, Command, CommandUnit, LinkMode, Meters, MetersPerSecond, MissionStatus, MotionCommand,
+    Progress, Reason, SetpointHover, Telemetry,
 };
 pub use control::crazyflie::CrazyflieCommandUnit;
 pub use control::crazyflie::setup_link;

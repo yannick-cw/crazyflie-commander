@@ -5,10 +5,11 @@ use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::setpoints::run_setpoints;
 use crate::control::patterns::smooth_path::run_smooth_path;
+use crate::control::trajectory::trajectory::orbit_to_trajectory;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
-use crate::{MetersPerSecond, Progress, Reason};
+use crate::{LinkMode, MetersPerSecond, Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use futures::{Stream, StreamExt};
@@ -149,7 +150,19 @@ impl CrazyflieCommandUnit {
                     orbital_period,
                     orbits,
                     z,
+                    link_mode: LinkMode::StreamToVehicle,
                 } => run_orbit(radius, orbital_period, orbits, z, vehicle).await?,
+                Command::Orbit {
+                    radius,
+                    orbital_period,
+                    orbits,
+                    z,
+                    link_mode: LinkMode::OnVehicle,
+                } => {
+                    let c = orbit_to_trajectory(radius, orbital_period, orbits, z)?;
+                    let id = vehicle.upload_compressed_trajectory(&c).await?;
+                    vehicle.run_trajectory(id, c.duration).await?
+                }
             }
         }
         Ok(())

@@ -15,8 +15,9 @@
         "secs": 4,
         "nanos": 0
       },
-      "orbits": 5,
-      "z": 0.5
+      "orbits": 3,
+      "z": 0.5,
+      "link_mode": "OnVehicle"
     }
   },
   {
