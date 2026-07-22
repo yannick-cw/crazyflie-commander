@@ -49,34 +49,15 @@ pub fn orbit_to_trajectory(
         vec![-180_f32.to_radians()],
     )?;
 
-    let to_north = CompressedSegment::new(
-        segment_duration.as_secs_f32(),
-        x1.to_vec(),
-        y1.to_vec(),
-        z_steady.clone(),
-        vec![-90_f32.to_radians()].clone(),
-    )?;
-    let to_west = CompressedSegment::new(
-        segment_duration.as_secs_f32(),
-        x2.to_vec(),
-        y2.to_vec(),
-        z_steady.clone(),
-        vec![0_f32.to_radians()].clone(),
-    )?;
-    let to_south = CompressedSegment::new(
-        segment_duration.as_secs_f32(),
-        x3.to_vec(),
-        y3.to_vec(),
-        z_steady.clone(),
-        vec![90_f32.to_radians()].clone(),
-    )?;
-    let to_east = CompressedSegment::new(
-        segment_duration.as_secs_f32(),
-        x4.to_vec(),
-        y4.to_vec(),
-        z_steady,
-        vec![180_f32.to_radians()],
-    )?;
+    let segment = |x_beziers: [f32; 3], y_beziers: [f32; 3], yaw_radians: f32| {
+        CompressedSegment::new(
+            segment_duration.as_secs_f32(),
+            x_beziers.to_vec(),
+            y_beziers.to_vec(),
+            z_steady.clone(),
+            vec![yaw_radians.to_radians()].clone(),
+        )
+    };
 
     let start = CompressedStart::new(0.0, 0.0, z, 0.0);
 
@@ -84,14 +65,15 @@ pub fn orbit_to_trajectory(
     // flight to start from first segment
     let mut total_duration = to_start_duration;
 
-    for _ in 1..=orbits {
+    for orbit_index in 0..orbits {
         // for each orbit - adding orbit duration
+        let base_yaw = (orbit_index as f32 * 360_f32) + 90_f32 - 180_f32;
         total_duration += orbital_period;
         segments.extend([
-            to_north.clone(),
-            to_west.clone(),
-            to_south.clone(),
-            to_east.clone(),
+            segment(x1, y1, base_yaw)?,
+            segment(x2, y2, base_yaw + 90_f32)?,
+            segment(x3, y3, base_yaw + 180_f32)?,
+            segment(x4, y4, base_yaw + 270_f32)?,
         ]);
     }
 

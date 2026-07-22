@@ -21,7 +21,7 @@ impl Model {
     pub fn new(mission: Vec<Command>, name: String) -> Self {
         let mode = LinkMode::default();
         Self {
-            mission: mission.into_iter().map(|c| c.to_link_mode(mode)).collect(),
+            mission,
             name,
             abort_sender: None,
             mission_status: drone_control::MissionStatus::Idle,
@@ -32,7 +32,7 @@ impl Model {
     pub fn trajectory_upload_available(&self) -> bool {
         let grounded = self.mission_status == drone_control::MissionStatus::Idle
             || self.mission_status == drone_control::MissionStatus::Aborted(Reason::Landing);
-        self.mission.iter().any(Command::has_link_mode) && grounded
+        self.mission.iter().any(Command::can_upload_trajectory) && grounded
     }
 
     pub fn toggle_link_mode(&mut self) {
@@ -40,12 +40,6 @@ impl Model {
             LinkMode::OnVehicle => LinkMode::StreamToVehicle,
             LinkMode::StreamToVehicle => LinkMode::OnVehicle,
         };
-        self.mission = self
-            .mission
-            .clone()
-            .into_iter()
-            .map(|c| c.to_link_mode(new_link_mode))
-            .collect();
         self.link_mode = new_link_mode;
     }
 }
@@ -69,8 +63,9 @@ pub fn update(command_unit: &'static impl CommandUnit, model: &mut Model, msg: M
         StartMission => {
             let mission = model.mission.clone();
             let (sender, receiver) = oneshot::channel();
-            let mission =
-                command_unit.run_mission(mission, async move { Some(receiver.await.unwrap()) });
+            let mission = command_unit.run_mission(mission, model.link_mode, async move {
+                Some(receiver.await.unwrap())
+            });
             model.abort_sender = Some(sender);
 
             Cmd::new(mission, |r| {

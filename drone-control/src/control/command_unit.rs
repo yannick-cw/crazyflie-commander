@@ -131,8 +131,6 @@ pub enum Command {
         orbital_period: Duration,
         orbits: usize,
         z: Meters,
-        #[serde(default)]
-        link_mode: LinkMode,
     },
     Hover {
         duration: Duration,
@@ -143,26 +141,8 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn to_link_mode(self, link_mode: LinkMode) -> Self {
-        match self {
-            Command::Orbit {
-                radius,
-                orbital_period,
-                orbits,
-                z,
-                ..
-            } => Command::Orbit {
-                radius,
-                orbital_period,
-                orbits,
-                z,
-                link_mode,
-            },
-            cmd => cmd,
-        }
-    }
-
-    pub fn has_link_mode(&self) -> bool {
+    // currently only `Orbit` supports uploading trajectory
+    pub fn can_upload_trajectory(&self) -> bool {
         matches!(self, Command::Orbit { .. })
     }
 }
@@ -303,6 +283,7 @@ pub trait CommandUnit {
     async fn run_mission(
         &self,
         mission: Vec<Command>,
+        link_mode: LinkMode,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()>;
     async fn fly(&self, commands: impl Stream<Item = MotionCommand>) -> Res<()>;

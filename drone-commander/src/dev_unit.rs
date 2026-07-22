@@ -1,5 +1,5 @@
 use drone_control::errors::Res;
-use drone_control::{Abort, Command, CommandUnit, Meters, MetersPerSecond, Telemetry};
+use drone_control::{Abort, Command, CommandUnit, LinkMode, Meters, MetersPerSecond, Telemetry};
 use futures::Stream;
 use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
@@ -12,6 +12,7 @@ impl CommandUnit for DevUnit {
     async fn run_mission(
         &self,
         _mission: Vec<Command>,
+        _link_mode: LinkMode,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
         Ok(select! {

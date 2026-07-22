@@ -106,7 +106,7 @@ pub struct CrazyflieCommandUnit {
 }
 
 impl CrazyflieCommandUnit {
-    async fn start_mission(&self, mission: Vec<Command>) -> Res<()> {
+    async fn start_mission(&self, mission: Vec<Command>, link_mode: LinkMode) -> Res<()> {
         let vehicle = &self.autopilot;
 
         let total_commands = mission.len();
@@ -150,19 +150,17 @@ impl CrazyflieCommandUnit {
                     orbital_period,
                     orbits,
                     z,
-                    link_mode: LinkMode::StreamToVehicle,
-                } => run_orbit(radius, orbital_period, orbits, z, vehicle).await?,
+                } if link_mode == LinkMode::OnVehicle => {
+                    let c = orbit_to_trajectory(radius, orbital_period, orbits, z)?;
+                    let id = vehicle.upload_compressed_trajectory(&c).await?;
+                    vehicle.run_trajectory(id, c.duration).await?
+                }
                 Command::Orbit {
                     radius,
                     orbital_period,
                     orbits,
                     z,
-                    link_mode: LinkMode::OnVehicle,
-                } => {
-                    let c = orbit_to_trajectory(radius, orbital_period, orbits, z)?;
-                    let id = vehicle.upload_compressed_trajectory(&c).await?;
-                    vehicle.run_trajectory(id, c.duration).await?
-                }
+                } => run_orbit(radius, orbital_period, orbits, z, vehicle).await?,
             }
         }
         Ok(())
@@ -198,6 +196,7 @@ impl CommandUnit for CrazyflieCommandUnit {
     async fn run_mission(
         &self,
         mission: Vec<Command>,
+        link_mode: LinkMode,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
         let mut telemetry_rx = self.autopilot.telemetry.clone();
@@ -205,7 +204,7 @@ impl CommandUnit for CrazyflieCommandUnit {
 
         // runs mission or aborts on keypress or on low battery
         Ok(select! {
-            mission = self.start_mission(mission) => {
+            mission = self.start_mission(mission, link_mode) => {
                 info!("Mission complete");
                 self.mission_status
                     .send(MissionStatus::Idle)
