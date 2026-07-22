@@ -38,16 +38,15 @@ pub fn orbit_to_trajectory(
         [-l, -radius, -radius],
         [-radius, -l, zero],
     );
-    let z_steady = vec![z, z, z];
-    // TODO
-    let yaw_steady = vec![zero, zero, zero];
+    let z_steady = vec![z];
 
+    let to_start_duration = Duration::from_secs(2);
     let to_start_east = CompressedSegment::new(
-        segment_duration.as_secs_f32(),
+        to_start_duration.as_secs_f32(),
         vec![radius],
         vec![zero],
         vec![z],
-        vec![zero],
+        vec![-180_f32.to_radians()],
     )?;
 
     let to_north = CompressedSegment::new(
@@ -55,35 +54,35 @@ pub fn orbit_to_trajectory(
         x1.to_vec(),
         y1.to_vec(),
         z_steady.clone(),
-        yaw_steady.clone(),
+        vec![-90_f32.to_radians()].clone(),
     )?;
     let to_west = CompressedSegment::new(
         segment_duration.as_secs_f32(),
         x2.to_vec(),
         y2.to_vec(),
         z_steady.clone(),
-        yaw_steady.clone(),
+        vec![0_f32.to_radians()].clone(),
     )?;
     let to_south = CompressedSegment::new(
         segment_duration.as_secs_f32(),
         x3.to_vec(),
         y3.to_vec(),
         z_steady.clone(),
-        yaw_steady.clone(),
+        vec![90_f32.to_radians()].clone(),
     )?;
     let to_east = CompressedSegment::new(
         segment_duration.as_secs_f32(),
         x4.to_vec(),
         y4.to_vec(),
         z_steady,
-        yaw_steady,
+        vec![180_f32.to_radians()],
     )?;
 
     let start = CompressedStart::new(0.0, 0.0, z, 0.0);
 
     let mut segments = vec![to_start_east];
     // flight to start from first segment
-    let mut total_duration = segment_duration;
+    let mut total_duration = to_start_duration;
 
     for _ in 1..=orbits {
         // for each orbit - adding orbit duration

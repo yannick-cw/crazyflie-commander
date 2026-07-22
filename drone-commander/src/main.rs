@@ -73,8 +73,8 @@ async fn main() -> color_eyre::Result<()> {
 // - [x] proper pubic facing API docs #![warn(missing_docs)] in both libs
 // ---- NEXT
 // - [ ] trajectory generation + upload of offline flying
-//   - [ ] port orbit -> easyish? MISSING: yaw + UI U button to fly on board if possible
-//   - [ ] take off again
+//   - [x] port orbit -> easyish? MISSING: yaw + UI U button to fly on board if possible (firmware bug fixed)
+//   - [x] take off again - fixed - was closing memory in between!
 //   - [ ] port smooth flying -> easyish?
 //   - [x] port move / move to -> easy = single point WONT DO
 //   - [x] not port billiard, as reactive - relative

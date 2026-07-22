@@ -96,7 +96,7 @@ impl<Msg: 'static> Cmd<Msg> {
         to_msg: fn(A) -> Msg,
     ) -> Cmd<Msg> {
         let m = cmd.map(to_msg);
-        Cmd(vec![Box::pin(m)])
+        Cmd(vec![m.boxed_local()])
     }
 
     /// A command that produces `msg` immediately without doing any work.
