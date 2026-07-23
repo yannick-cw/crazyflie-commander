@@ -13,20 +13,11 @@ use tokio_stream::wrappers::ReadDirStream;
 use tracing::warn;
 
 // model ------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Model {
     pub missions: Vec<(String, Vec<Command>)>,
     pub recorded_missions: Vec<(String, Vec<Command>)>,
     pub selection: usize,
-}
-impl Default for Model {
-    fn default() -> Self {
-        Model {
-            missions: Vec::new(),
-            recorded_missions: Vec::new(),
-            selection: 0,
-        }
-    }
 }
 
 // msg ------------------------------------

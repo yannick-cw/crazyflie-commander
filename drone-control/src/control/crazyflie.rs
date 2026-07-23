@@ -226,7 +226,7 @@ impl CommandUnit for CrazyflieCommandUnit {
         let is_low_bat = telemetry_rx.wait_for(Telemetry::is_low_bat);
 
         // runs mission or aborts on keypress or on low battery
-        Ok(select! {
+        select! {
             mission = self.start_mission(mission, link_mode) => {
                 info!("Mission complete");
                 self.mission_status
@@ -245,7 +245,8 @@ impl CommandUnit for CrazyflieCommandUnit {
                     .send(MissionStatus::Aborted(Reason::Landing))
                     .unwrap();
             }
-        })
+        };
+        Ok(())
     }
 
     async fn fly(&self, commands: impl Stream<Item = MotionCommand>) -> Res<()> {

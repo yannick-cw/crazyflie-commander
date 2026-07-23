@@ -1,4 +1,3 @@
-use crate::LinkMode::StreamToVehicle;
 use crate::control::low_level_engine::Setpoint;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
@@ -148,38 +147,26 @@ impl Command {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Default, PartialOrd, Serialize, Deserialize)]
 pub enum LinkMode {
     OnVehicle,
+    #[default]
     StreamToVehicle,
 }
-impl Default for LinkMode {
-    fn default() -> Self {
-        StreamToVehicle
-    }
-}
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Default, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum BatteryLevel {
     Low,
+    #[default]
     High,
 }
-impl Default for BatteryLevel {
-    fn default() -> Self {
-        BatteryLevel::High
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, PartialOrd, Serialize, Deserialize)]
 pub enum MissionStatus {
+    #[default]
     Idle,
     Running(Option<Progress>),
     Aborted(Reason),
-}
-impl Default for MissionStatus {
-    fn default() -> Self {
-        MissionStatus::Idle
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]

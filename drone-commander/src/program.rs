@@ -34,7 +34,7 @@ pub enum State {
 impl Default for State {
     fn default() -> Self {
         State::Home(home::Model {
-            selected_mode: ModeSelection::MissionSelectItem,
+            selected_mode: ModeSelection::MissionSelect,
         })
     }
 }
@@ -134,12 +134,12 @@ impl<U: CommandUnit> Ratatea for Program<U> {
             // ------------------------------------------------------------
             (State::Home(home::Model { selected_mode }), Msg::Home(home::Msg::Nav(Select))) => {
                 let (new_state, cmd) = match selected_mode {
-                    ModeSelection::MissionSelectItem => (
+                    ModeSelection::MissionSelect => (
                         State::MissionSelect(mission_select::Model::default()),
                         Cmd::pure(Msg::MissionSelect(mission_select::Msg::LoadMissions)),
                     ),
-                    ModeSelection::MissionPlanItem => (model.state, Cmd::none()),
-                    ModeSelection::FreeFlightItem if model.terminal_supports_enhancements => {
+                    ModeSelection::MissionPlan => (model.state, Cmd::none()),
+                    ModeSelection::FreeFlight if model.terminal_supports_enhancements => {
                         let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
                         let commands = UnboundedReceiverStream::new(motion_receiver);
                         (
@@ -147,7 +147,7 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                             Cmd::new(command_unit.fly(commands), |_| Msg::FreeFlight(CommandSet)),
                         )
                     }
-                    ModeSelection::FreeFlightItem => (model.state, Cmd::none()),
+                    ModeSelection::FreeFlight => (model.state, Cmd::none()),
                 };
                 model.state = new_state;
                 (model, cmd)

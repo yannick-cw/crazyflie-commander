@@ -58,7 +58,7 @@ pub fn orbit() -> Vec<Command> {
 }
 
 pub fn smooth_curves() -> Vec<Command> {
-    let one_loop = vec![
+    let one_loop = [
         Waypoint {
             x: Meters(0.5),
             y: Meters(0.0),
@@ -108,7 +108,7 @@ pub fn smooth_curves() -> Vec<Command> {
 }
 
 pub fn body_frame_smooth() -> Vec<Command> {
-    let one_loop = vec![
+    let one_loop = [
         Waypoint {
             x: Meters(0.75),
             y: Meters(0.0),

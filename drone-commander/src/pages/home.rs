@@ -12,24 +12,24 @@ pub struct Model {
 
 #[derive(Debug, PartialEq)]
 pub enum ModeSelection {
-    MissionSelectItem,
-    MissionPlanItem,
-    FreeFlightItem,
+    MissionSelect,
+    MissionPlan,
+    FreeFlight,
 }
 
 impl ModeSelection {
     pub fn next(&self) -> Self {
         match self {
-            ModeSelection::MissionSelectItem => ModeSelection::MissionPlanItem,
-            ModeSelection::MissionPlanItem => ModeSelection::FreeFlightItem,
-            ModeSelection::FreeFlightItem => ModeSelection::MissionSelectItem,
+            ModeSelection::MissionSelect => ModeSelection::MissionPlan,
+            ModeSelection::MissionPlan => ModeSelection::FreeFlight,
+            ModeSelection::FreeFlight => ModeSelection::MissionSelect,
         }
     }
     pub fn prev(&self) -> Self {
         match self {
-            ModeSelection::MissionSelectItem => ModeSelection::FreeFlightItem,
-            ModeSelection::MissionPlanItem => ModeSelection::MissionSelectItem,
-            ModeSelection::FreeFlightItem => ModeSelection::MissionPlanItem,
+            ModeSelection::MissionSelect => ModeSelection::FreeFlight,
+            ModeSelection::MissionPlan => ModeSelection::MissionSelect,
+            ModeSelection::FreeFlight => ModeSelection::MissionPlan,
         }
     }
 }

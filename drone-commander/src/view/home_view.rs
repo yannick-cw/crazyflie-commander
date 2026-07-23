@@ -1,5 +1,5 @@
 use crate::pages::home::Model;
-use crate::pages::home::ModeSelection::{FreeFlightItem, MissionPlanItem, MissionSelectItem};
+use crate::pages::home::ModeSelection::{FreeFlight, MissionPlan, MissionSelect};
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{center, controls, panel, selectable, shell};
 
@@ -33,15 +33,15 @@ pub fn view(model: &Model, supports_enhancements: bool, frame: &mut Frame) {
     let menu_area = center(body, 48, 9);
 
     let modes = [
-        (MissionSelectItem, "Select Mission"),
-        (MissionPlanItem, "Plan Mission"),
-        (FreeFlightItem, "Free Flight"),
+        (MissionSelect, "Select Mission"),
+        (MissionPlan, "Plan Mission"),
+        (FreeFlight, "Free Flight"),
     ];
 
     let mut lines: Vec<Line> = modes
         .iter()
         .map(|&(ref mode, name)| {
-            if *mode == FreeFlightItem && !supports_enhancements {
+            if *mode == FreeFlight && !supports_enhancements {
                 // free flight needs key press/release; grey it out when unsupported
                 Line::from(Span::styled(
                     format!("   {name}"),
@@ -56,13 +56,13 @@ pub fn view(model: &Model, supports_enhancements: bool, frame: &mut Frame) {
         .collect();
 
     // one-line description of the highlighted mode
-    let description = if model.selected_mode == FreeFlightItem && !supports_enhancements {
+    let description = if model.selected_mode == FreeFlight && !supports_enhancements {
         "unavailable: this terminal has no key-release support"
     } else {
         match model.selected_mode {
-            MissionSelectItem => "pick a saved mission and fly it",
-            MissionPlanItem => "build a route from waypoints", // TODO: not built yet
-            FreeFlightItem => "manual, observe-only flight",   // TODO: observe only for now
+            MissionSelect => "pick a saved mission and fly it",
+            MissionPlan => "build a route from waypoints", // TODO: not built yet
+            FreeFlight => "manual, observe-only flight",   // TODO: observe only for now
         }
     };
     lines.push(Line::from(""));

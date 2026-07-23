@@ -15,10 +15,11 @@ impl CommandUnit for DevUnit {
         _link_mode: LinkMode,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
-        Ok(select! {
+        select! {
             _ = sleep(Duration::from_secs(5))=> {},
             Some(_) = abort_signal=> {},
-        })
+        };
+        Ok(())
     }
 
     async fn fly(&self, _commands: impl Stream<Item = drone_control::MotionCommand>) -> Res<()> {
@@ -40,8 +41,8 @@ impl CommandUnit for DevUnit {
                 tele.x = tele.x + Meters(j());
                 tele.y = tele.y + Meters(j());
                 tele.z = tele.z + Meters(j());
-                tele.x_v = tele.x_v + MetersPerSecond(j());
-                tele.y_v = tele.y_v + MetersPerSecond(j());
+                tele.x_v += MetersPerSecond(j());
+                tele.y_v += MetersPerSecond(j());
                 tele.yaw_degrees += j();
                 sender.send(tele).unwrap();
             }
@@ -54,7 +55,7 @@ impl CommandUnit for DevUnit {
         spawn(async move {
             loop {
                 let mut ticks = time::interval(Duration::from_millis(2000));
-                let commands = vec![
+                let commands = [
                     Command::Takeoff {
                         height: Default::default(),
                         duration: Default::default(),

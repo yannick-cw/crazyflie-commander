@@ -122,7 +122,7 @@ impl<Msg: 'static> Cmd<Msg> {
             .into_iter() // own the futures
             .map(|fut| {
                 let f = f.clone(); // each future owns its own copy of f
-                fut.map(move |msg| f(msg)).boxed_local() // Map<..> -> BoxFuture<'static, M>
+                fut.map(f).boxed_local() // Map<..> -> BoxFuture<'static, M>
             })
             .collect())
     }

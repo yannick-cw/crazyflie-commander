@@ -47,7 +47,8 @@ impl Vehicle {
             .high_level_commander
             .take_off(height.0, None, duration.as_secs_f32(), None)
             .await?;
-        Ok(sleep(duration).await)
+        sleep(duration).await;
+        Ok(())
     }
 
     pub async fn go_to(
@@ -74,7 +75,8 @@ impl Vehicle {
                 None,
             )
             .await?;
-        Ok(sleep(duration).await)
+        sleep(duration).await;
+        Ok(())
     }
 
     pub async fn land(&self, duration: Duration) -> Res<()> {
@@ -83,7 +85,8 @@ impl Vehicle {
             .high_level_commander
             .land(0.0, None, duration.as_secs_f32(), None)
             .await?;
-        Ok(sleep(duration).await)
+        sleep(duration).await;
+        Ok(())
     }
 
     pub async fn send_setpoint(&self, setpoint: Setpoint) -> Res<()> {
@@ -139,7 +142,7 @@ impl Vehicle {
 
     pub async fn emergency_stop(&self) -> Res<()> {
         info!("emergency stop!");
-        self.cf.localization.emergency.send_emergency_stop().await?;
+        self.cf.supervisor.send_emergency_stop().await?;
         sleep(Duration::from_secs(1)).await;
         Ok(())
     }
@@ -173,7 +176,7 @@ impl Vehicle {
 
         while let Step::Continue(setpoint, next_cmd_state) = next_step(StepState {
             telemetry: self.latest_telemetry(),
-            time_elapsed: Instant::now() - start_time,
+            time_elapsed: start_time.elapsed(),
             command_state,
         }) {
             command_state = next_cmd_state;
@@ -275,6 +278,7 @@ impl Vehicle {
             .high_level_commander
             .start_trajectory(trajectory_id.0, 1.0, true, false, false, None)
             .await?;
-        Ok(sleep(trajectory_duration.add(Duration::from_millis(200))).await)
+        sleep(trajectory_duration.add(Duration::from_millis(200))).await;
+        Ok(())
     }
 }

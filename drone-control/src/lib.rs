@@ -7,11 +7,11 @@
 //!
 //! # Examples
 //! ```no_run
-//! use drone_control::{setup_link, CommandUnit, flight_paths::orbit};
+//! use drone_control::{setup_link, CommandUnit, flight_paths::orbit, LinkMode};
 //!
 //! # async fn run() -> drone_control::errors::Res<()> {
 //! let drone = setup_link().await?;
-//! drone.run_mission(orbit(), async { None }).await
+//! drone.run_mission(orbit(), LinkMode::StreamToVehicle, async { None }).await
 //! # }
 //! ```
 mod control;
