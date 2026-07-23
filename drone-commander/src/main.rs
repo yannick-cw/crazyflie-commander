@@ -71,28 +71,28 @@ async fn main() -> color_eyre::Result<()> {
 // - [x] free flight not selectable in terminals that do not support
 // - [x] refactor key_to_msg into each update / file
 // - [x] proper pubic facing API docs #![warn(missing_docs)] in both libs
-// ---- NEXT
-// - [ ] trajectory generation + upload of offline flying
+// - [x] trajectory generation + upload of offline flying
 //   - [x] port orbit -> easyish? MISSING: yaw + UI U button to fly on board if possible (firmware bug fixed)
 //   - [x] take off again - fixed - was closing memory in between!
-//   - [ ] port smooth flying -> easyish?
+//   - [x] port smooth flying -> easyish?
+//   - [x] port smooth flying -> missing yaw in body frame mode
 //   - [x] port move / move to -> easy = single point WONT DO
 //   - [x] not port billiard, as reactive - relative
 //   - [x] example usage to lib as example? https://github.com/bitcraze/crazyflie-lib-rs/blob/main/examples/trajectory.rs extend this
 //   - [x] could also use an example in the trajectory.rs
 //   - [x] improve compressed docs: mention bezier, its cubic, not quadratic for 3, bc. first point is always dropped, only h1,h2,e and e is start for next segment, trajectory type to be passed to high level commander
 //   - [x] maybe refactor whole link mode state approach - could be cleaner - e.g. different checks for if upload is possible, could all be encoded in mission: ... in the model or so
+// ---- NEXT
 // --- NEXT
 // - [ ] make trajectory upload actually happen BEFORE flight and only execute in flight
+// - [ ] Anti-crash: read the 5 ranges each tick, slow/stop when the travel-direction one drops under ~0.5 m | in free flight for now
+// - [ ] Spin-scan: hover + slow yaw, accumulate ranges + pose into a 2D room outline at that height - render?? - use then as fence?
+// - [ ] Localize (maybe, very difficult stretch): pre-scan room with iPhone, match live ranges to the model → inject extPos to correct flow drift -> achieve awesome positioning???
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] "connection lost" warning or whatever when unplugged
-// - [ ] build mission planner
 // - [ ] improve file read / write handling: location, if no dir...
 // - [ ] nix for bulding executable
 // - [ ] polish: only start with flowdeck, warn on non supporting terminal free flight,
 // - [ ] potentially re-center map to match around drone and real room
-// - [ ] Anti-crash: read the 5 ranges each tick, slow/stop when the travel-direction one drops under ~0.5 m
-// - [ ] Spin-scan: hover + slow yaw, accumulate ranges + pose into a 2D room outline at that height - render??
-// - [ ] Localize (maybe, very difficult stretch): pre-scan room with iPhone, match live ranges to the model → inject extPos to correct flow drift -> achieve awesome positioning???
