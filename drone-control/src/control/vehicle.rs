@@ -2,11 +2,14 @@ use crate::control::command_unit::SetpointHover;
 use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
 use crate::control::trajectory::orbit_trajectory::CompressedTrajectory;
+use crate::control::trajectory::setpoint_trajectory::Trajectory;
 use crate::errors::MissionError::UploadError;
 use crate::utils::errors::Res;
-use crazyflie_lib::Crazyflie;
-use crazyflie_lib::subsystems::high_level_commander::TRAJECTORY_TYPE_POLY4D_COMPRESSED;
+use crazyflie_lib::subsystems::high_level_commander::{
+    TRAJECTORY_TYPE_POLY4D, TRAJECTORY_TYPE_POLY4D_COMPRESSED,
+};
 use crazyflie_lib::subsystems::memory::{MemoryType, TrajectoryMemory};
+use crazyflie_lib::{Crazyflie, Error};
 use std::fmt::{Debug, Formatter};
 use std::ops::Add;
 use std::time::Duration;
@@ -184,14 +187,13 @@ impl Vehicle {
         Ok(())
     }
 
-    pub async fn upload_compressed_trajectory(
-        &self,
-        CompressedTrajectory {
-            start, segments, ..
-        }: &CompressedTrajectory,
-    ) -> Res<TrajectoryId> {
-        info!("Uploading compressed trajectory...");
-        let trajectory_id = TrajectoryId(1);
+    async fn write_to_mem<F>(&self, write_t: F) -> Res<()>
+    where
+        // this AsyncFnOnce ensures the passed in mem outlives the Future returned from F
+        // if using FnOnce instead e.g. it would basically need lifetime so we do not drop
+        // the mem arg before the future is awaited .await
+        F: AsyncFnOnce(&TrajectoryMemory) -> Result<usize, Error>,
+    {
         // Open the trajectory memory and upload the segments.
         let memory_device = self
             .cf
@@ -212,11 +214,42 @@ impl Vehicle {
                 "Trajectory memory already open or not found.".to_string(),
             ))??;
 
-        trajectory_memory
-            .write_compressed(start, segments, 0)
-            .await?;
+        write_t(&trajectory_memory).await?;
 
         self.cf.memory.close_memory(trajectory_memory).await?;
+        Ok(())
+    }
+
+    pub async fn upload_trajectory(&self, trajectory: &Trajectory) -> Res<TrajectoryId> {
+        info!("Uploading trajectory...");
+        let trajectory_id = TrajectoryId(1);
+        self.write_to_mem(async |mem| mem.write_uncompressed(&trajectory.segments, 0).await)
+            .await?;
+
+        // Register the uploaded trajectory under an ID the high-level commander can run.
+        info!("Defining trajectory...");
+        self.cf
+            .high_level_commander
+            .define_trajectory(
+                trajectory_id.0,
+                0,
+                trajectory.segments.len() as u8,
+                Some(TRAJECTORY_TYPE_POLY4D),
+            )
+            .await?;
+        Ok(trajectory_id)
+    }
+
+    pub async fn upload_compressed_trajectory(
+        &self,
+        CompressedTrajectory {
+            start, segments, ..
+        }: &CompressedTrajectory,
+    ) -> Res<TrajectoryId> {
+        info!("Uploading compressed trajectory...");
+        let trajectory_id = TrajectoryId(1);
+        self.write_to_mem(async |mem| mem.write_compressed(start, segments, 0).await)
+            .await?;
 
         // Register the uploaded trajectory under an ID the high-level commander can run.
         info!("Defining trajectory...");
@@ -240,7 +273,7 @@ impl Vehicle {
         info!("Starting trajectory...");
         self.cf
             .high_level_commander
-            .start_trajectory(trajectory_id.0, 1.0, true, true, false, None)
+            .start_trajectory(trajectory_id.0, 1.0, true, false, false, None)
             .await?;
         Ok(sleep(trajectory_duration.add(Duration::from_millis(200))).await)
     }

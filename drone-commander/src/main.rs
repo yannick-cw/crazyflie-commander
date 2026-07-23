@@ -83,6 +83,7 @@ async fn main() -> color_eyre::Result<()> {
 //   - [x] improve compressed docs: mention bezier, its cubic, not quadratic for 3, bc. first point is always dropped, only h1,h2,e and e is start for next segment, trajectory type to be passed to high level commander
 //   - [x] maybe refactor whole link mode state approach - could be cleaner - e.g. different checks for if upload is possible, could all be encoded in mission: ... in the model or so
 // --- NEXT
+// - [ ] make trajectory upload actually happen BEFORE flight and only execute in flight
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
 // - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?

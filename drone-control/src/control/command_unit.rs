@@ -113,6 +113,7 @@ pub enum Command {
         duration: Duration,
     },
     // smooth waypoint - relative to takeoff position
+    // important - first setpoint has to be the current position!
     SmoothPath {
         waypoints: Vec<Waypoint>,
         speed: MetersPerSecond,
@@ -143,7 +144,7 @@ pub enum Command {
 impl Command {
     // currently only `Orbit` supports uploading trajectory
     pub fn can_upload_trajectory(&self) -> bool {
-        matches!(self, Command::Orbit { .. })
+        matches!(self, Command::Orbit { .. } | Command::SmoothPath { .. })
     }
 }
 

@@ -6,6 +6,7 @@ use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::setpoints::run_setpoints;
 use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::trajectory::orbit_trajectory::orbit_to_trajectory;
+use crate::control::trajectory::setpoint_trajectory::waypoints_to_trajectory;
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
@@ -106,6 +107,7 @@ pub struct CrazyflieCommandUnit {
 }
 
 impl CrazyflieCommandUnit {
+    // TODO upload should happen before takeoff!! Not in the air
     async fn start_mission(&self, mission: Vec<Command>, link_mode: LinkMode) -> Res<()> {
         let vehicle = &self.autopilot;
 
@@ -120,47 +122,68 @@ impl CrazyflieCommandUnit {
                 })))
                 .unwrap();
 
-            match command {
-                Command::Takeoff { height, duration } => {
+            match (command, link_mode) {
+                (Command::Takeoff { height, duration }, _) => {
                     info!("Take Off...");
                     vehicle.take_off(height, duration).await?;
                 }
-                Command::Move { x, y, z, duration } => {
+                (Command::Move { x, y, z, duration }, _) => {
                     info!("Moving...");
                     vehicle.go_to(x, y, z, 0.0, duration, true, false).await?;
                 }
-                Command::MoveToWaypoint { x, y, z, duration } => {
+                (Command::MoveToWaypoint { x, y, z, duration }, _) => {
                     info!("Moving to point...");
                     vehicle.go_to(x, y, z, 0.0, duration, false, false).await?;
                 }
-                Command::Land { duration } => {
+                (Command::Land { duration }, _) => {
                     info!("Landing...");
                     vehicle.land(duration).await?;
                 }
-                Command::Hover { duration } => sleep(duration).await,
-                Command::BilliardBox(params) => run_billiard_loop(params, vehicle).await?,
-                Command::SmoothPath {
-                    waypoints,
-                    speed,
-                    flight_mode,
-                } => run_smooth_path(waypoints, vehicle, speed, flight_mode).await?,
-                Command::Setpoints { points } => run_setpoints(points, vehicle).await?,
-                Command::Orbit {
-                    radius,
-                    orbital_period,
-                    orbits,
-                    z,
-                } if link_mode == LinkMode::OnVehicle => {
+                (Command::Hover { duration }, _) => sleep(duration).await,
+                (Command::BilliardBox(params), _) => run_billiard_loop(params, vehicle).await?,
+                (
+                    Command::SmoothPath {
+                        waypoints,
+                        speed,
+                        flight_mode,
+                    },
+                    LinkMode::StreamToVehicle,
+                ) => run_smooth_path(waypoints, vehicle, speed, flight_mode).await?,
+                (
+                    Command::SmoothPath {
+                        waypoints,
+                        speed,
+                        flight_mode,
+                    },
+                    LinkMode::OnVehicle,
+                ) => {
+                    let t = waypoints_to_trajectory(waypoints, speed, flight_mode)?;
+                    let id = vehicle.upload_trajectory(&t).await?;
+                    vehicle.run_trajectory(id, t.duration).await?
+                }
+                (Command::Setpoints { points }, _) => run_setpoints(points, vehicle).await?,
+                (
+                    Command::Orbit {
+                        radius,
+                        orbital_period,
+                        orbits,
+                        z,
+                    },
+                    LinkMode::OnVehicle,
+                ) => {
                     let c = orbit_to_trajectory(radius, orbital_period, orbits, z)?;
                     let id = vehicle.upload_compressed_trajectory(&c).await?;
                     vehicle.run_trajectory(id, c.duration).await?
                 }
-                Command::Orbit {
-                    radius,
-                    orbital_period,
-                    orbits,
-                    z,
-                } => run_orbit(radius, orbital_period, orbits, z, vehicle).await?,
+                (
+                    Command::Orbit {
+                        radius,
+                        orbital_period,
+                        orbits,
+                        z,
+                    },
+                    LinkMode::StreamToVehicle,
+                ) => run_orbit(radius, orbital_period, orbits, z, vehicle).await?,
             }
         }
         Ok(())
