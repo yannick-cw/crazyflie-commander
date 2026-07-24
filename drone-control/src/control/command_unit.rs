@@ -153,7 +153,7 @@ impl Command {
 }
 
 #[derive(
-    Debug, Default, Copy, Eq, Ord, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize,
+    Debug, Default, Copy, Eq, Ord, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize, Add,
 )]
 pub struct TrajectoryId(pub u8);
 
