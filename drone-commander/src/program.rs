@@ -40,7 +40,7 @@ impl Default for State {
 }
 
 // msg ---------------------------------------
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Msg {
     TelemetryUpdate(Telemetry),
     Key(KeyEvent),

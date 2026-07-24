@@ -14,7 +14,7 @@ pub struct Trajectory {
 pub fn waypoints_to_trajectory(
     waypoints: Vec<Waypoint>,
     speed: MetersPerSecond,
-    _flight_mode: FlightMode, // TODO use for yaw
+    flight_mode: FlightMode,
 ) -> Res<Trajectory> {
     let waypoints_moved_1 = waypoints.iter().copied();
     let segments: Vec<_> = waypoints
@@ -30,9 +30,13 @@ pub fn waypoints_to_trajectory(
             let target_yaw_radians = y_goal.0.atan2(x_goal.0);
             // instant turn to new yaw
             let yaw = Poly::from_slice(&[target_yaw_radians]);
+            let yaw = match flight_mode {
+                FlightMode::Strafe => Poly::from_slice(&[0.0]),
+                FlightMode::BodyFrame => yaw,
+            };
 
             if vec_len > 0.0 {
-                // normalised length of vector
+                // normalized length of vector
                 let x_norm = x_goal.0 / vec_len;
                 let y_norm = y_goal.0 / vec_len;
                 let z_norm = z_goal.0 / vec_len;

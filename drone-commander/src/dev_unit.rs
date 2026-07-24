@@ -1,5 +1,8 @@
 use drone_control::errors::Res;
-use drone_control::{Abort, Command, CommandUnit, LinkMode, Meters, MetersPerSecond, Telemetry};
+use drone_control::{
+    Abort, Command, CommandUnit, FlightMode, Meters, MetersPerSecond, Telemetry, TrajectoryId,
+    Waypoint,
+};
 use futures::Stream;
 use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
@@ -12,7 +15,6 @@ impl CommandUnit for DevUnit {
     async fn run_mission(
         &self,
         _mission: Vec<Command>,
-        _link_mode: LinkMode,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
         select! {
@@ -20,6 +22,25 @@ impl CommandUnit for DevUnit {
             Some(_) = abort_signal=> {},
         };
         Ok(())
+    }
+
+    async fn upload_orbit(
+        &self,
+        _radius: Meters,
+        _orbital_period: Duration,
+        _orbits: usize,
+        _z: Meters,
+    ) -> Res<(TrajectoryId, Duration)> {
+        Ok((TrajectoryId::default(), Duration::default()))
+    }
+
+    async fn upload_smooth_path(
+        &self,
+        _waypoints: Vec<Waypoint>,
+        _speed: MetersPerSecond,
+        _flight_mode: FlightMode,
+    ) -> Res<(TrajectoryId, Duration)> {
+        Ok((TrajectoryId::default(), Duration::default()))
     }
 
     async fn fly(&self, _commands: impl Stream<Item = drone_control::MotionCommand>) -> Res<()> {

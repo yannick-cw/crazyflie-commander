@@ -1,5 +1,5 @@
-use crate::control::command_unit::SetpointHover;
 use crate::control::command_unit::{Meters, Telemetry};
+use crate::control::command_unit::{SetpointHover, TrajectoryId};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
 use crate::control::trajectory::orbit_trajectory::CompressedTrajectory;
 use crate::control::trajectory::setpoint_trajectory::Trajectory;
@@ -30,8 +30,6 @@ impl Debug for Vehicle {
             .finish()
     }
 }
-
-pub struct TrajectoryId(pub u8);
 
 impl Vehicle {
     pub fn new(cf: Crazyflie, telemetry: watch::Receiver<Telemetry>) -> Self {

@@ -7,19 +7,19 @@
 //!
 //! # Examples
 //! ```no_run
-//! use drone_control::{setup_link, CommandUnit, flight_paths::orbit, LinkMode};
+//! use drone_control::{setup_link, CommandUnit, flight_paths::orbit};
 //!
 //! # async fn run() -> drone_control::errors::Res<()> {
 //! let drone = setup_link().await?;
-//! drone.run_mission(orbit(), LinkMode::StreamToVehicle, async { None }).await
+//! drone.run_mission(orbit(), async { None }).await
 //! # }
 //! ```
 mod control;
 mod utils;
 
 pub use control::command_unit::{
-    Abort, Command, CommandUnit, LinkMode, Meters, MetersPerSecond, MissionStatus, MotionCommand,
-    Progress, Reason, SetpointHover, Telemetry,
+    Abort, Command, CommandUnit, FlightMode, Meters, MetersPerSecond, MissionStatus, MotionCommand,
+    Progress, Reason, SetpointHover, Telemetry, TrajectoryId, Waypoint,
 };
 pub use control::crazyflie::CrazyflieCommandUnit;
 pub use control::crazyflie::setup_link;

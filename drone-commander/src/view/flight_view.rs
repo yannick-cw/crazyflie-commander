@@ -10,11 +10,12 @@ use ratatui::{
     },
 };
 
+use crate::pages::mission_execution::ExecutionMode;
 use crate::pages::{free_flight, mission_execution};
 use crate::program::{Model, State};
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
-use drone_control::{Command, LinkMode, Meters, MissionStatus, Setpoint, Telemetry};
+use drone_control::{Command, Meters, MissionStatus, Setpoint, Telemetry};
 // AI GENERATED
 
 /// Speed (m/s) that maps to a full gauge / "hot" colour.
@@ -36,8 +37,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
     let show_back =
         matches!(mission, Some(s) if !matches!(s.mission_status, MissionStatus::Running(_)));
     // link-mode toggle is only offered when grounded and a command supports trajectory upload
-    let show_upload_toggle =
-        show_back && mission.is_some_and(|s| s.trajectory_upload_available());
+    let show_upload_toggle = show_back && mission.is_some_and(|s| s.trajectory_upload_available());
 
     let keys: Vec<(&str, &str, Color)> = match &model.state {
         // free flight has its own control scheme
@@ -106,8 +106,10 @@ pub fn view(model: &Model, frame: &mut Frame) {
     frame.render_widget(velocity_panel(t), vel_area);
     frame.render_widget(state_panel(t), state_area);
     if let State::MissionExecution(s) = &model.state {
-        if s.link_mode == LinkMode::OnVehicle {
-            frame.render_widget(upload_info(), rec_area);
+        match s.link_mode {
+            ExecutionMode::Offline => frame.render_widget(upload_info(), rec_area),
+            ExecutionMode::FailedUpload => frame.render_widget(upload_failed_warning(), rec_area),
+            ExecutionMode::Online => {}
         }
     }
     if let State::FreeFlight(s) = &model.state {
@@ -180,6 +182,23 @@ fn upload_info() -> Paragraph<'static> {
         )),
         Line::from(Span::styled(
             "runs onboard the drone; finishes even if the radio link drops",
+            Style::new().fg(LABEL),
+        )),
+    ])
+    .wrap(Wrap { trim: true })
+    .block(panel(" LINK "))
+}
+
+/// Shown when trajectory upload failed: the mission was not uploaded and instead
+/// runs online, streamed over the radio link.
+fn upload_failed_warning() -> Paragraph<'static> {
+    Paragraph::new(vec![
+        Line::from(Span::styled(
+            "upload failed",
+            Style::new().fg(DANGER).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "mission not uploaded; running normally online, streamed over the radio link",
             Style::new().fg(LABEL),
         )),
     ])
@@ -361,7 +380,10 @@ fn mission_path(mission: &[Command]) -> Vec<PathElem> {
                 );
             }
             // no horizontal displacement
-            Command::Takeoff { .. } | Command::Hover { .. } | Command::Land { .. } => {}
+            Command::Takeoff { .. }
+            | Command::Hover { .. }
+            | Command::Land { .. }
+            | Command::OnVehicleTrajectory { .. } => {}
         }
     }
     elems

@@ -2,7 +2,7 @@ use crossterm::event::{Event, EventStream, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use drone_control::errors::Res;
 use drone_control::flight_paths::orbit;
-use drone_control::{Abort, Command, CommandUnit, LinkMode, setup_link};
+use drone_control::{Abort, Command, CommandUnit, setup_link};
 use futures::StreamExt;
 use std::future;
 
@@ -26,9 +26,7 @@ async fn run_mission(mission: Vec<Command>, command_unit: &impl CommandUnit) -> 
     });
     let abort_signal = async move { mission_abort_event.next().await };
 
-    command_unit
-        .run_mission(mission, LinkMode::StreamToVehicle, abort_signal)
-        .await?;
+    command_unit.run_mission(mission, abort_signal).await?;
     disable_raw_mode().unwrap();
     Ok(())
 }

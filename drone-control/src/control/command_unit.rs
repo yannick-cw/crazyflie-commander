@@ -138,6 +138,11 @@ pub enum Command {
     Land {
         duration: Duration,
     },
+    OnVehicleTrajectory {
+        id: TrajectoryId,
+        duration: Duration,
+        original_command: Box<Command>,
+    },
 }
 
 impl Command {
@@ -147,12 +152,10 @@ impl Command {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Default, PartialOrd, Serialize, Deserialize)]
-pub enum LinkMode {
-    OnVehicle,
-    #[default]
-    StreamToVehicle,
-}
+#[derive(
+    Debug, Default, Copy, Eq, Ord, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize,
+)]
+pub struct TrajectoryId(pub u8);
 
 #[derive(Debug, Copy, Clone, PartialEq, Default, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum BatteryLevel {
@@ -271,9 +274,46 @@ pub trait CommandUnit {
     async fn run_mission(
         &self,
         mission: Vec<Command>,
-        link_mode: LinkMode,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()>;
+
+    async fn upload_command(&self, command: Command) -> Res<Option<(TrajectoryId, Duration)>> {
+        match command {
+            Command::SmoothPath {
+                waypoints,
+                speed,
+                flight_mode,
+            } => Ok(Some(
+                self.upload_smooth_path(waypoints, speed, flight_mode)
+                    .await?,
+            )),
+            Command::Orbit {
+                radius,
+                orbital_period,
+                orbits,
+                z,
+            } => Ok(Some(
+                self.upload_orbit(radius, orbital_period, orbits, z).await?,
+            )),
+            _ => Ok(None),
+        }
+    }
+
+    async fn upload_orbit(
+        &self,
+        radius: Meters,
+        orbital_period: Duration,
+        orbits: usize,
+        z: Meters,
+    ) -> Res<(TrajectoryId, Duration)>;
+
+    async fn upload_smooth_path(
+        &self,
+        waypoints: Vec<Waypoint>,
+        speed: MetersPerSecond,
+        flight_mode: FlightMode,
+    ) -> Res<(TrajectoryId, Duration)>;
+
     async fn fly(&self, commands: impl Stream<Item = MotionCommand>) -> Res<()>;
     // emits latest telemetry - is updates every 10ms
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
