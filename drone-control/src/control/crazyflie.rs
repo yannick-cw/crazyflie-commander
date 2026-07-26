@@ -14,12 +14,25 @@ use crate::utils::errors::Res;
 use crate::{Meters, MetersPerSecond, Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryFutureExt};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
 use tokio::time::{MissedTickBehavior, sleep};
 use tokio::{select, time};
 use tracing::info;
+
+pub const RANGE_FRONT: &str = "range.front";
+pub const RANGE_BACK: &str = "range.back";
+pub const RANGE_LEFT: &str = "range.left";
+pub const RANGE_RIGHT: &str = "range.right";
+pub const RANGE_UP: &str = "range.up";
+pub const PM_STATE: &str = "pm.state";
+pub const STATE_ESTIMATE_X: &str = "stateEstimate.x";
+pub const STATE_ESTIMATE_Y: &str = "stateEstimate.y";
+pub const STATE_ESTIMATE_Z: &str = "stateEstimate.z";
+pub const STATE_ESTIMATE_VX: &str = "stateEstimate.vx";
+pub const STATE_ESTIMATE_VY: &str = "stateEstimate.vy";
+pub const STATE_ESTIMATE_YAW: &str = "stateEstimate.yaw";
 
 /// Scan the radio for a Crazyflie, connect, reset its state estimate, and start telemetry logging.
 ///
@@ -43,28 +56,39 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     cf.param.set_lossy("kalman.resetEstimation", 0.0).await?;
 
     let mut log_block_telemetry = cf.log.create_block().await?;
-    let mut log_stream_battery = cf.log.create_block().await?;
-    log_stream_battery.add_variable("pm.state").await?;
+    let mut log_block_range_bat = cf.log.create_block().await?;
 
-    let log_var_names = [
-        "stateEstimate.x",
-        "stateEstimate.y",
-        "stateEstimate.z", // seems to be broken?
-        "stateEstimate.vx",
-        "stateEstimate.vy",
-        "stateEstimate.yaw",
-        // "stateEstimate.vz",
+    let range_bat_logs = [
+        RANGE_FRONT,
+        RANGE_BACK,
+        RANGE_LEFT,
+        RANGE_RIGHT,
+        RANGE_UP,
+        PM_STATE,
     ];
 
-    for var_name in log_var_names {
+    let state_estimate_logs = [
+        STATE_ESTIMATE_X,
+        STATE_ESTIMATE_Y,
+        STATE_ESTIMATE_Z,
+        STATE_ESTIMATE_VX,
+        STATE_ESTIMATE_VY,
+        STATE_ESTIMATE_YAW,
+    ];
+
+    for var_name in state_estimate_logs {
         log_block_telemetry.add_variable(var_name).await?;
+    }
+
+    for var_name in range_bat_logs {
+        log_block_range_bat.add_variable(var_name).await?;
     }
 
     let log_stream_telemetry = log_block_telemetry
         .start(LogPeriod::from_millis(10).unwrap())
         .await?;
 
-    let log_stream_battery = log_stream_battery
+    let log_stream_range_bat = log_block_range_bat
         .start(LogPeriod::from_millis(10).unwrap())
         .await?;
 
@@ -75,7 +99,7 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     tokio::spawn(async move {
         loop {
             let (tele_block, battery_block) =
-                tokio::join!(log_stream_telemetry.next(), log_stream_battery.next());
+                tokio::join!(log_stream_telemetry.next(), log_stream_range_bat.next());
             match (tele_block, battery_block) {
                 (Ok(tele_log), Ok(bat_log)) => {
                     let telemetry = Telemetry::from_log_data(&tele_log, &bat_log);
@@ -248,7 +272,8 @@ impl CommandUnit for CrazyflieCommandUnit {
         tokio::pin!(commands);
 
         let mut telemetry_rx = self.vehicle.telemetry.clone();
-        let mut ticks = time::interval(Duration::from_millis(10));
+        let mut too_close_rx = self.vehicle.telemetry.clone();
+        let mut ticks = time::interval(Duration::from_millis(20));
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut last_setpoint: Option<SetpointHover> = None;
 
@@ -263,42 +288,55 @@ impl CommandUnit for CrazyflieCommandUnit {
                             self.vehicle.send_relative_speed(s).await?;
                         }}
                 },
-                _ = telemetry_rx.wait_for(Telemetry::is_low_bat) => {
+                // the `map_ok` is crucial - without it the sender towards telemetry_rx is blocked for the entire return_home
+                // as the select arm is basically just the future that would still have the ref to telemetry open
+                _ = telemetry_rx.wait_for(Telemetry::is_low_bat).map_ok(|_|()) => {
                     info!("Low battery - returning home");
                     self.vehicle.return_home().await?;
                     break;
                 },
-                maybe_motion = commands.next() => match maybe_motion {
-                    //stream ended - land
-                    None => {
-                        if last_setpoint.is_some() {
-                            self.vehicle.return_home().await?;
+                // the `map_ok` is crucial - without it the sender towards telemetry_rx is blocked for the entire return_home - need to
+                // get rid of the Ref!
+                Ok(t) = too_close_rx
+                        .wait_for(|t| Vehicle::is_too_close(t) && last_setpoint.is_some()).map_ok(|t|*t) => {
+                            let safe_z = last_setpoint.map_or(Meters(0.5), |s|s.z);
+                            let accelerate_away_setpoint = Vehicle::avoid_obstacle_move(safe_z, &t);
+                            self.vehicle.send_relative_speed(accelerate_away_setpoint).await?;
+                            // this ensures we correct again only in tick time + we do not jump back into the tick branch right away if still to close
+                            ticks.tick().await;
+                },
+                maybe_motion = commands.next() =>
+                    match maybe_motion {
+                        //stream ended - land
+                        None => {
+                            if last_setpoint.is_some() {
+                                self.vehicle.return_home().await?;
+                            }
+                            // free flight over - stopping
+                            break;
                         }
-                        // free flight over - stopping
-                        break;
-                    }
-                    Some(MotionCommand::Land) => {
-                        last_setpoint = None;
-                        self.vehicle.notify_setpoint_stop().await?;
-                        self.vehicle.land(Duration::from_secs(2)).await?;
-                    }
-                    Some(MotionCommand::TakeOff(z) )=> {
-                        self.vehicle.take_off(z, Duration::from_secs(2)).await?;
-                        last_setpoint = Some(SetpointHover { vx: MetersPerSecond(0.0),vy: MetersPerSecond(0.0),z,yaw_rate: 0.0, });
-                    }
-                    Some(MotionCommand::Move(setpoint)) => {
-                        last_setpoint = Some(setpoint);
-                        self.vehicle.send_relative_speed(setpoint).await?;
-                    }
-                    Some(MotionCommand::Stop) => {
-                        self.vehicle.emergency_stop().await?;
-                        // free flight over - stopping
-                        break;
-                    }
-                    Some(MotionCommand::GoHome) => {
-                        last_setpoint = None;
-                        self.vehicle.return_home().await?;
-                    }},
+                        Some(MotionCommand::Land) => {
+                            last_setpoint = None;
+                            self.vehicle.notify_setpoint_stop().await?;
+                            self.vehicle.land(Duration::from_secs(2)).await?;
+                        }
+                        Some(MotionCommand::TakeOff(z) )=> {
+                            self.vehicle.take_off(z, Duration::from_secs(2)).await?;
+                            last_setpoint = Some(SetpointHover { vx: MetersPerSecond(0.0),vy: MetersPerSecond(0.0),z,yaw_rate: 0.0, });
+                        }
+                        Some(MotionCommand::Move(setpoint)) => {
+                            last_setpoint = Some(setpoint);
+                            self.vehicle.send_relative_speed(setpoint).await?;
+                        }
+                        Some(MotionCommand::Stop) => {
+                            self.vehicle.emergency_stop().await?;
+                            // free flight over - stopping
+                            break;
+                        }
+                        Some(MotionCommand::GoHome) => {
+                            last_setpoint = None;
+                            self.vehicle.return_home().await?;
+                        }},
             }
         }
         Ok(())

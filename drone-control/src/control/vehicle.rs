@@ -1,3 +1,4 @@
+use crate::MetersPerSecond;
 use crate::control::command_unit::{Meters, Telemetry};
 use crate::control::command_unit::{SetpointHover, TrajectoryId};
 use crate::control::low_level_engine::{Setpoint, Step, StepState};
@@ -56,7 +57,8 @@ impl Vehicle {
             .high_level_commander
             .take_off(height.0, None, duration.as_secs_f32(), None)
             .await?;
-        sleep(duration).await;
+        // safe time to always wait before further action
+        sleep(duration.max(Duration::from_secs(5))).await;
         Ok(())
     }
 
@@ -141,6 +143,63 @@ impl Vehicle {
             .setpoint_hover(vx.0, vy.0, yaw_rate, z.0)
             .await?;
         Ok(())
+    }
+
+    pub fn is_too_close(
+        &Telemetry {
+            range_front,
+            range_back,
+            range_right,
+            range_left,
+            range_up,
+            ..
+        }: &Telemetry,
+    ) -> bool {
+        let safe_distance = Meters(0.30);
+        range_front < safe_distance
+            || range_back < safe_distance
+            || range_left < safe_distance
+            || range_right < safe_distance
+            || range_up < safe_distance
+    }
+
+    pub fn avoid_obstacle_move(
+        target_z: Meters,
+        t @ &Telemetry {
+            range_front,
+            range_back,
+            range_right,
+            range_left,
+            ..
+        }: &Telemetry,
+    ) -> SetpointHover {
+        info!("too-close - sending reverse setpoint... {:?}", t);
+        let safe_distance = Meters(0.30);
+
+        let v_change = |d: Meters| MetersPerSecond(1. + d.0 * (-0.8 / 0.3));
+
+        let mut vx = MetersPerSecond(0.);
+        if range_front < safe_distance {
+            vx = vx - v_change(range_front);
+        }
+        if range_back < safe_distance {
+            vx = vx + v_change(range_back);
+        }
+
+        let mut vy = MetersPerSecond(0.);
+        if range_left < safe_distance {
+            vy = vy - v_change(range_left);
+        }
+        if range_right < safe_distance {
+            vy = vy + v_change(range_right);
+        }
+
+        SetpointHover {
+            vx,
+            vy,
+            z: target_z,
+            yaw_rate: 0.0,
+        }
     }
 
     pub async fn notify_setpoint_stop(&self) -> Res<()> {
@@ -329,5 +388,74 @@ impl Vehicle {
             .await?;
         sleep(trajectory_duration.add(Duration::from_millis(200))).await;
         Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn t() -> Telemetry {
+        Telemetry {
+            x: Default::default(),
+            y: Default::default(),
+            z: Default::default(),
+            x_v: Default::default(),
+            y_v: Default::default(),
+            yaw_degrees: 0.0,
+            battery_level: Default::default(),
+            range_front: Default::default(),
+            range_back: Default::default(),
+            range_right: Default::default(),
+            range_left: Default::default(),
+            range_up: Default::default(),
+        }
+    }
+
+    #[test]
+    fn accelerate_away_max_speed() {
+        let too_close_front_right = Telemetry {
+            range_back: Meters(1.0),
+            range_left: Meters(1.0),
+            ..t()
+        };
+
+        let z = Meters(0.5);
+        let avoidance = Vehicle::avoid_obstacle_move(z, &too_close_front_right);
+
+        assert_eq!(avoidance.vx, MetersPerSecond(-1.0));
+        assert_eq!(avoidance.vy, MetersPerSecond(1.0));
+    }
+
+    #[test]
+    fn accelerate_away_half_speed() {
+        let too_close_front_right = Telemetry {
+            range_back: Meters(1.0),
+            range_left: Meters(1.0),
+            range_front: Meters(0.1875),
+            range_right: Meters(0.1875),
+            ..t()
+        };
+
+        let z = Meters(0.5);
+        let avoidance = Vehicle::avoid_obstacle_move(z, &too_close_front_right);
+
+        assert_eq!(avoidance.vx, MetersPerSecond(-0.5));
+        assert_eq!(avoidance.vy, MetersPerSecond(0.5));
+    }
+
+    #[test]
+    fn freeze_equidistant() {
+        let too_close_front_right = Telemetry {
+            range_back: Meters(0.15),
+            range_left: Meters(0.15),
+            range_front: Meters(0.15),
+            range_right: Meters(0.15),
+            ..t()
+        };
+
+        let z = Meters(0.5);
+        let avoidance = Vehicle::avoid_obstacle_move(z, &too_close_front_right);
+
+        assert_eq!(avoidance.vx, MetersPerSecond(0.0));
+        assert_eq!(avoidance.vy, MetersPerSecond(0.0));
     }
 }

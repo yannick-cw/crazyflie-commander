@@ -1,3 +1,7 @@
+use crate::control::crazyflie::{
+    PM_STATE, RANGE_BACK, RANGE_FRONT, RANGE_LEFT, RANGE_RIGHT, RANGE_UP, STATE_ESTIMATE_VX,
+    STATE_ESTIMATE_VY, STATE_ESTIMATE_X, STATE_ESTIMATE_Y, STATE_ESTIMATE_YAW, STATE_ESTIMATE_Z,
+};
 use crate::control::low_level_engine::Setpoint;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
@@ -8,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
+use tracing::warn;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Abort {
@@ -196,25 +201,42 @@ pub struct Telemetry {
     // pub z_v: MetersPerSecond,
     pub yaw_degrees: f32,
     pub battery_level: BatteryLevel,
+    pub range_front: Meters,
+    pub range_back: Meters,
+    pub range_right: Meters,
+    pub range_left: Meters,
+    pub range_up: Meters,
 }
 impl Telemetry {
-    pub fn from_log_data(tele_log: &LogData, battery_log: &LogData) -> Self {
+    pub fn from_log_data(tele_log: &LogData, range_bat_log: &LogData) -> Self {
         let get = |name: &str, l: &LogData| {
-            l.data.get(name).map(Value::to_f64_lossy).unwrap_or(0.0) as f32
+            l.data
+                .get(name)
+                .map(Value::to_f64_lossy)
+                .unwrap_or_else(|| {
+                    warn!("Could not unpack log var {name} in log data {l:?}");
+                    0.0
+                }) as f32
         };
         Self {
-            x: Meters(get("stateEstimate.x", tele_log)),
-            y: Meters(get("stateEstimate.y", tele_log)),
-            z: Meters(get("stateEstimate.z", tele_log)),
-            x_v: MetersPerSecond(get("stateEstimate.vx", tele_log)),
-            y_v: MetersPerSecond(get("stateEstimate.vy", tele_log)),
+            x: Meters(get(STATE_ESTIMATE_X, tele_log)),
+            y: Meters(get(STATE_ESTIMATE_Y, tele_log)),
+            z: Meters(get(STATE_ESTIMATE_Z, tele_log)),
+            x_v: MetersPerSecond(get(STATE_ESTIMATE_VX, tele_log)),
+            y_v: MetersPerSecond(get(STATE_ESTIMATE_VY, tele_log)),
             // z_v: MetersPerSecond(get("stateEstimate.vz")),
-            yaw_degrees: get("stateEstimate.yaw", tele_log),
-            battery_level: if get("pm.state", battery_log) >= 3.0 {
+            yaw_degrees: get(STATE_ESTIMATE_YAW, tele_log),
+            battery_level: if get(PM_STATE, range_bat_log) >= 3.0 {
                 BatteryLevel::Low
             } else {
                 BatteryLevel::High
             },
+            // if 0.0 range causes problems this could be the cause on missing log data
+            range_front: Meters(get(RANGE_FRONT, range_bat_log) / 1000.0),
+            range_back: Meters(get(RANGE_BACK, range_bat_log) / 1000.0),
+            range_left: Meters(get(RANGE_LEFT, range_bat_log) / 1000.0),
+            range_right: Meters(get(RANGE_RIGHT, range_bat_log) / 1000.0),
+            range_up: Meters(get(RANGE_UP, range_bat_log) / 1000.0),
         }
     }
     pub fn is_low_bat(&self) -> bool {

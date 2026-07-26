@@ -13,6 +13,8 @@ mod view;
 #[tokio::main]
 // color_eyre:Result<()> is the alternative to the std lib `Box<dyn Error + Send + Sync + 'static>` case
 async fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
+
     let file_appender = tracing_appender::rolling::never("./logs", "commander.log");
     tracing_subscriber::fmt()
         .with_writer(file_appender)
@@ -83,10 +85,10 @@ async fn main() -> color_eyre::Result<()> {
 //   - [x] could also use an example in the trajectory.rs
 //   - [x] improve compressed docs: mention bezier, its cubic, not quadratic for 3, bc. first point is always dropped, only h1,h2,e and e is start for next segment, trajectory type to be passed to high level commander
 //   - [x] maybe refactor whole link mode state approach - could be cleaner - e.g. different checks for if upload is possible, could all be encoded in mission: ... in the model or so
+// - [x] make trajectory upload actually happen BEFORE flight and only execute in flight + atomic* for sharing trajectory id?
 // ---- NEXT
-// - [ ] make trajectory upload actually happen BEFORE flight and only execute in flight + atomic* for sharing trajectory id?
-// --- NEXT
 // - [ ] Anti-crash: read the 5 ranges each tick, slow/stop when the travel-direction one drops under ~0.5 m | in free flight for now
+// --- NEXT
 // - [ ] Spin-scan: hover + slow yaw, accumulate ranges + pose into a 2D room outline at that height - render?? - use then as fence?
 // - [ ] Localize (maybe, very difficult stretch): pre-scan room with iPhone, match live ranges to the model → inject extPos to correct flow drift -> achieve awesome positioning???
 // - [ ] vehicle selection screen first? - just use CLI flag or default

@@ -88,11 +88,12 @@ pub fn view(model: &Model, frame: &mut Frame) {
     let [map_area, side] =
         Layout::horizontal([Constraint::Min(0), Constraint::Length(26)]).areas(body);
 
-    // sidebar: position · velocity · state · (recording, fills the rest)
-    let [pos_area, vel_area, state_area, rec_area] = Layout::vertical([
+    // sidebar: position · velocity · state · ranges · (recording, fills the rest)
+    let [pos_area, vel_area, state_area, ranges_area, rec_area] = Layout::vertical([
         Constraint::Length(5),
         Constraint::Length(5),
         Constraint::Length(4),
+        Constraint::Length(7),
         Constraint::Min(0),
     ])
     .areas(side);
@@ -105,6 +106,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
     frame.render_widget(position_panel(t), pos_area);
     frame.render_widget(velocity_panel(t), vel_area);
     frame.render_widget(state_panel(t), state_area);
+    frame.render_widget(ranges_panel(t), ranges_area);
     if let State::MissionExecution(s) = &model.state {
         match s.link_mode {
             ExecutionMode::Offline => frame.render_widget(upload_info(), rec_area),
@@ -234,6 +236,13 @@ enum PathElem {
 fn map(t: &Telemetry, mission: Option<&mission_execution::Model>) -> impl Widget {
     let drone = (t.x() as f64, t.y() as f64);
     let yaw = t.yaw() as f64;
+    // multiranger distances (body frame): front, back, left, right
+    let ranges = (
+        t.range_front.0 as f64,
+        t.range_back.0 as f64,
+        t.range_left.0 as f64,
+        t.range_right.0 as f64,
+    );
     let route = mission.map(|m| waypoints(&m.mission)).unwrap_or_default();
     let current = mission.and_then(current_index);
     // preview the full route only in a take-off-ready state (idle / aborted)
@@ -331,6 +340,23 @@ fn map(t: &Telemetry, mission: Option<&mission_execution::Model>) -> impl Widget
                 y2: nose.1,
                 color: HEADING,
             });
+            // obstacle dots: each ranger distance, in its body direction rotated by heading
+            let (s, c) = (rad.sin(), rad.cos());
+            let (front, back, left, right) = ranges;
+            for (dist, dx, dy) in [
+                (front, c, s),
+                (back, -c, -s),
+                (left, -s, c),
+                (right, s, -c),
+            ] {
+                let (rx, ry) = tf((drone.0 + dist * dx, drone.1 + dist * dy));
+                ctx.draw(&Circle {
+                    x: rx,
+                    y: ry,
+                    radius: 0.05,
+                    color: DANGER,
+                });
+            }
         })
 }
 
@@ -460,6 +486,38 @@ fn state_panel(t: &Telemetry) -> Paragraph<'static> {
         ]),
     ])
     .block(panel(" STATE "))
+}
+
+/// Multiranger obstacle distances (front/back/left/right/up). Readings at or above the
+/// sensor's ~4 m ceiling are shown as "—" (nothing in range).
+fn ranges_panel(t: &Telemetry) -> Paragraph<'static> {
+    Paragraph::new(vec![
+        range_line("FWD", t.range_front),
+        range_line("BACK", t.range_back),
+        range_line("LEFT", t.range_left),
+        range_line("RIGHT", t.range_right),
+        range_line("UP", t.range_up),
+    ])
+    .block(panel(" RANGES "))
+}
+
+/// One range reading: dim "—" when nothing is in range, red when uncomfortably close.
+fn range_line(label: &str, m: Meters) -> Line<'static> {
+    /// Above this the multiranger reports its no-object sentinel, not a real distance.
+    const NO_OBJECT_M: f32 = 4.0;
+    /// Matches the avoidance threshold in `drone_control`.
+    const TOO_CLOSE_M: f32 = 0.30;
+    let (value, color) = if m.0 >= NO_OBJECT_M {
+        ("—".to_string(), LABEL)
+    } else if m.0 < TOO_CLOSE_M {
+        (format!("{:.2} m", m.0), DANGER)
+    } else {
+        (format!("{:.2} m", m.0), POSITION)
+    };
+    Line::from(vec![
+        Span::styled(format!(" {label:<6}"), Style::new().fg(LABEL)),
+        Span::styled(value, Style::new().fg(color).add_modifier(Modifier::BOLD)),
+    ])
 }
 
 fn speed_gauge(t: &Telemetry) -> Gauge<'static> {

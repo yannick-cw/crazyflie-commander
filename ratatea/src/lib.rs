@@ -171,6 +171,13 @@ pub trait Ratatea {
 /// Fails if terminal setup, input or drawing fails.
 pub async fn run<P: Ratatea>(p: P) -> color_eyre::Result<()> {
     let mut terminal = ratatui::init();
+
+    let default_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        ratatui::restore();
+        default_panic_hook(info);
+    }));
+
     let supports_enhancements = terminal::supports_keyboard_enhancement()?;
     if supports_enhancements {
         execute!(
