@@ -79,12 +79,14 @@ pub fn update(command_unit: &'static impl CommandUnit, model: &mut Model, msg: M
         StartMission => {
             let mission = model.mission.clone();
             let (sender, receiver) = oneshot::channel();
-            let mission =
-                command_unit.run_mission(mission, async move { Some(receiver.await.unwrap()) });
+            let h = tokio::spawn(
+                command_unit.run_mission(mission, async move { Some(receiver.await.unwrap()) }),
+            );
             model.abort_sender = Some(sender);
 
-            Cmd::new(mission, |r| {
-                r.unwrap_or_else(|err| warn!("Mission failed with: {err}"));
+            Cmd::new(h, |r| {
+                r.unwrap()
+                    .unwrap_or_else(|err| warn!("Mission failed with: {err}"));
                 MissionResult
             })
         }

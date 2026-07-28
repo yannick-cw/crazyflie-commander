@@ -3,6 +3,7 @@ use crate::control::crazyflie::{
     STATE_ESTIMATE_VY, STATE_ESTIMATE_X, STATE_ESTIMATE_Y, STATE_ESTIMATE_YAW, STATE_ESTIMATE_Z,
 };
 use crate::control::low_level_engine::Setpoint;
+use crate::occupancy::grid::Grid;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
@@ -293,11 +294,11 @@ pub enum MotionCommand {
 /// Run a mission with [`run_mission`](Self::run_mission) or fly live with [`fly`](Self::fly).
 #[allow(async_fn_in_trait)]
 pub trait CommandUnit {
-    async fn run_mission(
+    fn run_mission(
         &self,
         mission: Vec<Command>,
-        abort_signal: impl Future<Output = Option<Abort>>,
-    ) -> Res<()>;
+        abort_signal: impl Future<Output = Option<Abort>> + Send,
+    ) -> impl Future<Output = Res<()>> + Send;
 
     async fn upload_command(&self, command: Command) -> Res<Option<(TrajectoryId, Duration)>> {
         match command {
@@ -336,11 +337,14 @@ pub trait CommandUnit {
         flight_mode: FlightMode,
     ) -> Res<(TrajectoryId, Duration)>;
 
-    async fn fly(&self, commands: impl Stream<Item = MotionCommand>) -> Res<()>;
+    fn fly(
+        &self,
+        commands: impl Stream<Item = MotionCommand> + Send,
+    ) -> impl Future<Output = Res<()>> + Send;
     // emits latest telemetry - is updates every 10ms
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
     // emits latest telemetry - is updates every 10ms
     fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
-    // todo maybe more sense to return form run_mission
+    fn latest_grid(&self) -> watch::Receiver<Grid>;
     fn mission_status(&self) -> watch::Receiver<MissionStatus>;
 }

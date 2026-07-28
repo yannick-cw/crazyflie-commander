@@ -1,6 +1,6 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols::Marker,
     text::{Line, Span},
@@ -13,6 +13,7 @@ use ratatui::{
 use crate::pages::mission_execution::ExecutionMode;
 use crate::pages::{free_flight, mission_execution};
 use crate::program::{Model, State};
+use crate::view::occupancy_map::OccupancyMap;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
 use drone_control::{Command, Meters, MissionStatus, Setpoint, Telemetry};
@@ -20,8 +21,13 @@ use drone_control::{Command, Meters, MissionStatus, Setpoint, Telemetry};
 
 /// Speed (m/s) that maps to a full gauge / "hot" colour.
 const MAX_SPEED: f32 = 2.5;
-/// Half-extent of the square top-down map viewport, in metres (takeoff origin centred → 3x3 m).
-const MAP_M: f64 = 1.5;
+/// Half-extent of the top-down map viewport, in metres (takeoff origin centred). Keep in
+/// step with the occupancy grid's extent in `drone_control`, otherwise the map shows blank
+/// space beyond the grid (too large) or crops it (too small).
+const MAP_M: f64 = 3.0;
+/// Terminal characters are about twice as tall as they are wide. Without correcting for
+/// this the map is stretched horizontally. Font-dependent; nudge if squares look off.
+const CHAR_ASPECT: f64 = 2.0;
 /// Speed setting (m/s) that maps to a full speed-setting gauge.
 const MAX_SPEED_SETTING: f32 = 2.0;
 
@@ -102,7 +108,13 @@ pub fn view(model: &Model, frame: &mut Frame) {
         State::FreeFlight(s) => frame.render_widget(free_flight_bar(s), mission_area),
         _ => frame.render_widget(mission_bar(mission), mission_area),
     }
-    frame.render_widget(map(t, mission), map_area);
+    // one set of bounds shared by the canvas and the wash, so they stay in register
+    let map_inner = panel(" MAP ").inner(map_area);
+    let bounds = map_bounds(map_inner);
+    frame.render_widget(map(t, mission, bounds), map_area);
+    // the occupancy wash goes on top of the canvas but only paints backgrounds, so the
+    // braille route/drone overlay stays visible (the canvas clears bg over its own area)
+    frame.render_widget(OccupancyMap::new(&model.grid, bounds), map_inner);
     frame.render_widget(position_panel(t), pos_area);
     frame.render_widget(velocity_panel(t), vel_area);
     frame.render_widget(state_panel(t), state_area);
@@ -230,10 +242,35 @@ enum PathElem {
     Rect((f64, f64), (f64, f64)),
 }
 
+/// Half-extents (horizontal, vertical) of the map viewport in metres, corrected for the
+/// non-square shape of terminal characters so the world is never distorted.
+///
+/// At least `MAP_M` is always visible on both axes; whichever axis has spare room on
+/// screen simply shows more world instead of stretching it.
+fn map_bounds(area: Rect) -> (f64, f64) {
+    let visual = (
+        f64::from(area.width),
+        f64::from(area.height) * CHAR_ASPECT,
+    );
+    if visual.1 <= 0.0 {
+        return (MAP_M, MAP_M);
+    }
+    let aspect = visual.0 / visual.1;
+    if aspect >= 1.0 {
+        (MAP_M * aspect, MAP_M)
+    } else {
+        (MAP_M, MAP_M / aspect)
+    }
+}
+
 /// Top-down braille map: before take-off it previews the whole planned route; during
 /// flight it marks the waypoints with the current one highlighted. Always shows the
 /// live drone position and heading.
-fn map(t: &Telemetry, mission: Option<&mission_execution::Model>) -> impl Widget {
+fn map(
+    t: &Telemetry,
+    mission: Option<&mission_execution::Model>,
+    (half_h, half_v): (f64, f64),
+) -> impl Widget {
     let drone = (t.x() as f64, t.y() as f64);
     let yaw = t.yaw() as f64;
     // multiranger distances (body frame): front, back, left, right
@@ -262,8 +299,8 @@ fn map(t: &Telemetry, mission: Option<&mission_execution::Model>) -> impl Widget
     Canvas::default()
         .block(panel(" MAP "))
         .marker(Marker::Braille)
-        .x_bounds([-MAP_M, MAP_M])
-        .y_bounds([-MAP_M, MAP_M])
+        .x_bounds([-half_h, half_h])
+        .y_bounds([-half_v, half_v])
         .paint(move |ctx| {
             // planned route preview (pre-flight only)
             for elem in &path {

@@ -6,7 +6,7 @@ use crate::pages::{free_flight, home, mission_execution, mission_select};
 use crate::program::NavigationMessage::*;
 use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use drone_control::{CommandUnit, Telemetry};
+use drone_control::{CommandUnit, Grid, Telemetry};
 use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub};
 use ratatui::Frame;
@@ -17,6 +17,7 @@ use tokio_stream::wrappers::{UnboundedReceiverStream, WatchStream};
 #[derive(Debug)]
 pub struct Model {
     pub telemetry: Telemetry,
+    pub grid: Box<Grid>,
     pub terminal_supports_enhancements: bool,
     pub exit: bool,
     pub state: State,
@@ -43,6 +44,8 @@ impl Default for State {
 #[derive(Debug)]
 pub enum Msg {
     TelemetryUpdate(Telemetry),
+    // grid is a bit larger - better to box and have on the heap
+    GridUpdate(Box<Grid>),
     Key(KeyEvent),
     Resize,
     Quit,
@@ -81,6 +84,7 @@ impl<U: CommandUnit> Ratatea for Program<U> {
         (
             Model {
                 telemetry: Default::default(),
+                grid: Box::new(Grid::new()),
                 exit: false,
                 terminal_supports_enhancements: self.terminal_supports_enhancements,
                 state: State::default(),
@@ -93,18 +97,11 @@ impl<U: CommandUnit> Ratatea for Program<U> {
         let command_unit = self.command_unit;
         let mut model: Model = m;
         match (&mut model.state, msg) {
-            (
-                s,
-                Msg::TelemetryUpdate(
-                    tele @ Telemetry {
-                        x,
-                        y,
-                        z,
-                        yaw_degrees: yaw,
-                        ..
-                    },
-                ),
-            ) => {
+            (_, Msg::GridUpdate(grid)) => {
+                model.grid = grid;
+                (model, Cmd::none())
+            }
+            (s, Msg::TelemetryUpdate(tele)) => {
                 model.telemetry = tele;
                 if let State::FreeFlight(flight_state) = s
                     && flight_state.is_recording
@@ -112,10 +109,10 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                     // todo this is a bit brittle right now - these setpoints will be replayed at 100hz
                     // so this relies on telemetry coming in at 100hz
                     flight_state.recording.push(SetpointRecording {
-                        x,
-                        y,
-                        z,
-                        yaw_degrees: yaw,
+                        x: tele.x,
+                        y: tele.y,
+                        z: tele.z,
+                        yaw_degrees: tele.yaw_degrees,
                     });
                 };
                 (model, Cmd::none())
@@ -142,9 +139,10 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                     ModeSelection::FreeFlight if model.terminal_supports_enhancements => {
                         let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
                         let commands = UnboundedReceiverStream::new(motion_receiver);
+                        let h = tokio::spawn(command_unit.fly(commands));
                         (
                             State::FreeFlight(free_flight::Model::new(motion_sender)),
-                            Cmd::new(command_unit.fly(commands), |_| Msg::FreeFlight(CommandSet)),
+                            Cmd::new(h, |_| Msg::FreeFlight(CommandSet)),
                         )
                     }
                     ModeSelection::FreeFlight => (model.state, Cmd::none()),
@@ -209,6 +207,9 @@ impl<U: CommandUnit> Ratatea for Program<U> {
             vec![
                 WatchStream::new(self.command_unit.latest_telemetry().clone())
                     .map(Msg::TelemetryUpdate)
+                    .boxed(),
+                WatchStream::new(self.command_unit.latest_grid().clone())
+                    .map(|g| Msg::GridUpdate(Box::new(g)))
                     .boxed(),
                 WatchStream::new(self.command_unit.mission_status().clone())
                     .map(|update| Msg::MissionExecution(MissionUpdate(update)))

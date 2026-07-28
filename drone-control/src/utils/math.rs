@@ -45,17 +45,21 @@ pub fn calc_orbit_points(
         .collect()
 }
 
-pub fn calc_yaw_rate(dx: Meters, dy: Meters, yaw: f32) -> f32 {
+// gets shortest turn [-180,180]
+pub fn get_angle_in_180(dx: Meters, dy: Meters, yaw: f32) -> f32 {
     // yaw towards target minus current yaw
-    let raw_error = dy.0.atan2(dx.0).to_degrees() - yaw;
+    let relative_degrees_to_target = dy.0.atan2(dx.0).to_degrees() - yaw;
     // gets shortest turn [-180,180]
-    let yaw_err = if raw_error > 180.0 {
-        raw_error - 360.0
-    } else if raw_error < -180.0 {
-        raw_error + 360.0
+    if relative_degrees_to_target > 180.0 {
+        relative_degrees_to_target - 360.0
+    } else if relative_degrees_to_target < -180.0 {
+        relative_degrees_to_target + 360.0
     } else {
-        raw_error
-    };
+        relative_degrees_to_target
+    }
+}
+pub fn calc_yaw_rate(dx: Meters, dy: Meters, yaw: f32) -> f32 {
+    let yaw_err = get_angle_in_180(dx, dy, yaw);
     // get a good rate = further away => higher rate, but max limit
     (3.0 * yaw_err).clamp(-200.0, 200.0)
 }

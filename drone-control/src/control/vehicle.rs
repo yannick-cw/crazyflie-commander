@@ -155,7 +155,7 @@ impl Vehicle {
             ..
         }: &Telemetry,
     ) -> bool {
-        let safe_distance = Meters(0.30);
+        let safe_distance = Meters(0.20);
         range_front < safe_distance
             || range_back < safe_distance
             || range_left < safe_distance
@@ -173,8 +173,8 @@ impl Vehicle {
             ..
         }: &Telemetry,
     ) -> SetpointHover {
-        info!("too-close - sending reverse setpoint... {:?}", t);
-        let safe_distance = Meters(0.30);
+        info!("too-close - sending reverse setpoint... tele: {:?}", t);
+        let safe_distance = Meters(0.20);
 
         let v_change = |d: Meters| MetersPerSecond(1. + d.0 * (-0.8 / 0.3));
 
@@ -194,12 +194,14 @@ impl Vehicle {
             vy = vy + v_change(range_right);
         }
 
-        SetpointHover {
+        let s = SetpointHover {
             vx,
             vy,
             z: target_z,
             yaw_rate: 0.0,
-        }
+        };
+        info!("too-close - sending  setpoint... setpoint {:?}", s);
+        s
     }
 
     pub async fn notify_setpoint_stop(&self) -> Res<()> {

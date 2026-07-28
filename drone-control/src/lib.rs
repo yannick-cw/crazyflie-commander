@@ -15,6 +15,7 @@
 //! # }
 //! ```
 mod control;
+mod occupancy;
 mod utils;
 
 pub use control::command_unit::{
@@ -24,5 +25,6 @@ pub use control::command_unit::{
 pub use control::crazyflie::CrazyflieCommandUnit;
 pub use control::crazyflie::setup_link;
 pub use control::low_level_engine::Setpoint;
+pub use occupancy::grid::{Cell, Grid};
 pub use utils::errors;
 pub use utils::flight_paths;

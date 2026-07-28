@@ -9,6 +9,7 @@ use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::trajectory::orbit_trajectory::orbit_to_trajectory;
 use crate::control::trajectory::setpoint_trajectory::waypoints_to_trajectory;
 use crate::control::vehicle::Vehicle;
+use crate::occupancy::grid::{Grid, update_grid};
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
 use crate::{Meters, MetersPerSecond, Progress, Reason};
@@ -93,9 +94,23 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
         .await?;
 
     let (tx, _rx) = broadcast::channel(64);
-    let (watch_tx, _watch_rx) = watch::channel(Telemetry::default());
+    let (sender_tx, r) = watch::channel(Telemetry::default());
+    let (sender_grid, _) = watch::channel(Grid::new());
     let local_sender_tx = tx.clone();
-    let local_watch_tx = watch_tx.clone();
+    let local_watch_tx = sender_tx.clone();
+    let local_grid_sender = sender_grid.clone();
+
+    tokio::spawn(async move {
+        let mut ticks = time::interval(Duration::from_millis(50));
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut grid = Grid::new();
+        loop {
+            ticks.tick().await;
+            let telemetry = *r.borrow();
+            update_grid(&mut grid, &telemetry);
+            let _ = local_grid_sender.send(grid.clone());
+        }
+    });
     tokio::spawn(async move {
         loop {
             let (tele_block, battery_block) =
@@ -113,9 +128,10 @@ pub async fn setup_link() -> Res<CrazyflieCommandUnit> {
     let (status_sender, _) = watch::channel(MissionStatus::Idle);
     let mission_status = status_sender.clone();
     Ok(CrazyflieCommandUnit {
-        vehicle: Vehicle::new(cf, watch_tx.subscribe()),
+        vehicle: Vehicle::new(cf, sender_tx.subscribe()),
         telemetry_sender: tx,
-        telemetry_latest: watch_tx,
+        telemetry_latest: sender_tx,
+        grid_latest: sender_grid,
         mission_status,
     })
 }
@@ -128,6 +144,7 @@ pub struct CrazyflieCommandUnit {
     vehicle: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,
     telemetry_latest: watch::Sender<Telemetry>,
+    grid_latest: watch::Sender<Grid>,
     mission_status: watch::Sender<MissionStatus>,
 }
 
@@ -219,7 +236,7 @@ impl CommandUnit for CrazyflieCommandUnit {
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
         let mut telemetry_rx = self.vehicle.telemetry.clone();
-        let is_low_bat = telemetry_rx.wait_for(Telemetry::is_low_bat);
+        let is_low_bat = telemetry_rx.wait_for(Telemetry::is_low_bat).map_ok(|_| ());
 
         // runs mission or aborts on keypress or on low battery
         select! {
@@ -272,7 +289,7 @@ impl CommandUnit for CrazyflieCommandUnit {
         tokio::pin!(commands);
 
         let mut telemetry_rx = self.vehicle.telemetry.clone();
-        let mut too_close_rx = self.vehicle.telemetry.clone();
+        let too_close_rx = self.vehicle.telemetry.clone();
         let mut ticks = time::interval(Duration::from_millis(20));
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut last_setpoint: Option<SetpointHover> = None;
@@ -282,9 +299,14 @@ impl CommandUnit for CrazyflieCommandUnit {
                 // in case we do not have something new from the stream
                 // we repeat the last setpoint motion
                 _ = ticks.tick() => {
-                    match last_setpoint {
-                        None => {}
-                        Some(s) => {
+                    let telemetry = *too_close_rx.borrow();
+                    match (telemetry, last_setpoint) {
+                        (t, Some(s)) if Vehicle::is_too_close(&t)=> {
+                            let accelerate_away_setpoint = Vehicle::avoid_obstacle_move(s.z, &t);
+                            self.vehicle.send_relative_speed(accelerate_away_setpoint).await?;
+                        }
+                        (_, None) => {}
+                        (_, Some(s)) => {
                             self.vehicle.send_relative_speed(s).await?;
                         }}
                 },
@@ -294,16 +316,6 @@ impl CommandUnit for CrazyflieCommandUnit {
                     info!("Low battery - returning home");
                     self.vehicle.return_home().await?;
                     break;
-                },
-                // the `map_ok` is crucial - without it the sender towards telemetry_rx is blocked for the entire return_home - need to
-                // get rid of the Ref!
-                Ok(t) = too_close_rx
-                        .wait_for(|t| Vehicle::is_too_close(t) && last_setpoint.is_some()).map_ok(|t|*t) => {
-                            let safe_z = last_setpoint.map_or(Meters(0.5), |s|s.z);
-                            let accelerate_away_setpoint = Vehicle::avoid_obstacle_move(safe_z, &t);
-                            self.vehicle.send_relative_speed(accelerate_away_setpoint).await?;
-                            // this ensures we correct again only in tick time + we do not jump back into the tick branch right away if still to close
-                            ticks.tick().await;
                 },
                 maybe_motion = commands.next() =>
                     match maybe_motion {
@@ -348,6 +360,10 @@ impl CommandUnit for CrazyflieCommandUnit {
 
     fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
         self.telemetry_latest.subscribe()
+    }
+
+    fn latest_grid(&self) -> watch::Receiver<Grid> {
+        self.grid_latest.subscribe()
     }
 
     fn mission_status(&self) -> watch::Receiver<MissionStatus> {

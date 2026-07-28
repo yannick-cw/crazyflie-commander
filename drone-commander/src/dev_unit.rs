@@ -1,7 +1,7 @@
 use drone_control::errors::Res;
 use drone_control::{
-    Abort, Command, CommandUnit, FlightMode, Meters, MetersPerSecond, Telemetry, TrajectoryId,
-    Waypoint,
+    Abort, Command, CommandUnit, FlightMode, Grid, Meters, MetersPerSecond, Telemetry,
+    TrajectoryId, Waypoint,
 };
 use futures::Stream;
 use std::time::Duration;
@@ -68,6 +68,11 @@ impl CommandUnit for DevUnit {
                 sender.send(tele).unwrap();
             }
         });
+        receiver
+    }
+
+    fn latest_grid(&self) -> watch::Receiver<drone_control::Grid> {
+        let (_, receiver) = watch::channel(Grid::new());
         receiver
     }
 
