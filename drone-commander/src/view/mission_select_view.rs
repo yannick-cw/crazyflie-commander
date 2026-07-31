@@ -99,7 +99,10 @@ fn details(model: &Model) -> Paragraph<'static> {
                 Style::new().fg(LABEL).add_modifier(Modifier::ITALIC),
             )),
         ],
-        None => vec![Line::from(Span::styled("no missions", Style::new().fg(LABEL)))],
+        None => vec![Line::from(Span::styled(
+            "no missions",
+            Style::new().fg(LABEL),
+        ))],
     };
     Paragraph::new(content).block(panel(" DETAILS "))
 }

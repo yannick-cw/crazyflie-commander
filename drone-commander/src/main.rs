@@ -87,15 +87,19 @@ async fn main() -> color_eyre::Result<()> {
 //   - [x] maybe refactor whole link mode state approach - could be cleaner - e.g. different checks for if upload is possible, could all be encoded in mission: ... in the model or so
 // - [x] make trajectory upload actually happen BEFORE flight and only execute in flight + atomic* for sharing trajectory id?
 // - [x] Anti-crash: read the 5 ranges each tick, slow/stop when the travel-direction one drops under ~0.5 m | in free flight for now
+// - [x] Spin-scan: hover + slow yaw, accumulate ranges + pose into a 2D room outline at that height - render?? - use then as fence?
+//   - no spin, just collecting when flying slowly
+// - [x] post mission stops telemetry? - more like when battery abort telemetry stops changing? -- fixed by borrow bug
 // ---- NEXT
-// - [ ] Or auto explore room and map it out?
-// - [ ] Spin-scan: hover + slow yaw, accumulate ranges + pose into a 2D room outline at that height - render?? - use then as fence?
 // --- NEXT
+// - [ ] webserver path: TUI stores no json missions, server does, can /post missions, /get missions and execute, /post mission results (grid + telemetry?), /post replays as missions
+//       maybe serve a web page rendering a mission executed log + the grid created for that, /get grid for room id, auth for endpoints and page (bearer tkn - login form)!
+// - [ ] new Command: Auto explore room and map it out?
+// - [ ] improve grid building - right now very rough probability distribution
 // - [ ] buffer some observations about range to not immediately back off?
 // - [ ] Localize (maybe, very difficult stretch): pre-scan room with iPhone, match live ranges to the model → inject extPos to correct flow drift -> achieve awesome positioning???
 // - [ ] vehicle selection screen first? - just use CLI flag or default
 // - [ ] ratatea re-evaluate subscriptions
-// - [ ] post mission stops telemetry? - more like when battery abort telemetry stops changing?
 // - [ ] "connection lost" warning or whatever when unplugged
 // - [ ] improve file read / write handling: location, if no dir...
 // - [ ] nix for bulding executable

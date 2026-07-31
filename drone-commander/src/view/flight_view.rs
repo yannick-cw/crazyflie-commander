@@ -248,10 +248,7 @@ enum PathElem {
 /// At least `MAP_M` is always visible on both axes; whichever axis has spare room on
 /// screen simply shows more world instead of stretching it.
 fn map_bounds(area: Rect) -> (f64, f64) {
-    let visual = (
-        f64::from(area.width),
-        f64::from(area.height) * CHAR_ASPECT,
-    );
+    let visual = (f64::from(area.width), f64::from(area.height) * CHAR_ASPECT);
     if visual.1 <= 0.0 {
         return (MAP_M, MAP_M);
     }
@@ -380,12 +377,7 @@ fn map(
             // obstacle dots: each ranger distance, in its body direction rotated by heading
             let (s, c) = (rad.sin(), rad.cos());
             let (front, back, left, right) = ranges;
-            for (dist, dx, dy) in [
-                (front, c, s),
-                (back, -c, -s),
-                (left, -s, c),
-                (right, s, -c),
-            ] {
+            for (dist, dx, dy) in [(front, c, s), (back, -c, -s), (left, -s, c), (right, s, -c)] {
                 let (rx, ry) = tf((drone.0 + dist * dx, drone.1 + dist * dy));
                 ctx.draw(&Circle {
                     x: rx,

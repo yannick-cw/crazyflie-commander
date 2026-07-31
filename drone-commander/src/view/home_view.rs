@@ -1,5 +1,5 @@
-use crate::pages::home::Model;
 use crate::pages::home::ModeSelection::{FreeFlight, MissionPlan, MissionSelect};
+use crate::pages::home::Model;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{center, controls, panel, selectable, shell};
 

@@ -27,7 +27,14 @@ fn smooth_path_steps(
     speed: MetersPerSecond,
 ) -> impl Fn(StepState<usize>) -> Step<usize> {
     move |StepState {
-              telemetry: Telemetry { x, y, z, yaw_degrees: yaw, .. },
+              telemetry:
+                  Telemetry {
+                      x,
+                      y,
+                      z,
+                      yaw_degrees: yaw,
+                      ..
+                  },
               command_state: current_wp_cursor,
               ..
           }| {
