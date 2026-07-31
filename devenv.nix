@@ -31,6 +31,7 @@
     pkgs.cargo-generate
     pkgs.cargo-expand
     pkgs.cargo-audit
+    pkgs.cargo-watch
   ];
 
   enterShell = ''
@@ -38,11 +39,19 @@
     ln -sfn ${config.languages.rust.toolchainPackage} "$PWD/.rust-rover/toolchain"
   '';
 
- #git-hooks.hooks = {
-    #rustfmt.enable = true;
-    #clippy.enable = true;
+  #git-hooks.hooks = {
+  #rustfmt.enable = true;
+  #clippy.enable = true;
   #};
   enterTest = ''
-    cargo test --test api
+    wait_for_port 5432
+    cargo test
   '';
+
+  processes = lib.optionalAttrs (!config.devenv.isTesting) {
+    backend = {
+      exec = "cd mission-store && cargo watch -x run";
+      after = [ "devenv:processes:postgres" ];
+    };
+  };
 }
