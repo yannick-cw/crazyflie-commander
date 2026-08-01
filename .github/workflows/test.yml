@@ -11,11 +11,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    env:
-        SQLX_OFFLINE: "true" # needed as database url is present, to make compiling without postgres possible
     steps:
     - uses: actions/checkout@v5
-    - uses: actions/cache@v4     
+    - uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry

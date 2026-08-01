@@ -38,8 +38,13 @@ in
     initialDatabases = [ db ];
   };
 
-  # injects env variable in dev env
-  env.DATABASE_URL = "postgres://${db.user}:${db.pass}@localhost:${pgPort}/${db.name}";
+  env = {
+    # injects env variable in dev env, useful for sqlx to have compile time safety
+    DATABASE_URL = "postgres://${db.user}:${db.pass}@localhost:${pgPort}/${db.name}";
+    # prevents always needing running postgress when working, as database url above is present
+    # and overwrites using /.sqlx cache
+    SQLX_OFFLINE = "true";
+  };
 
   packages = [
     pkgs.sqlx-cli
@@ -54,6 +59,7 @@ in
   files.".env".text = ''
     DATABASE_URL=${config.env.DATABASE_URL}
   '';
+  dotenv.disableHint = true; # I just write to it and dont read it here
 
   # creates a symlinked config, for rust rover
   files."mission-store/configuration.yaml".yaml = {
