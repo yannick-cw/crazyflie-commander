@@ -9,14 +9,31 @@ pub struct Settings {
 
 #[derive(Deserialize, Debug)]
 pub struct DBSettings {
-    pub connection_string: String,
+    pub user: String,
+    pub passwd: String,
+    pub url: String,
+    pub name: String,
+    pub port: i16,
+}
+
+impl DBSettings {
+    pub fn connection_string(&self) -> String {
+        format!(
+            "postgres://{}:{}@{}:{}/{}",
+            self.user, self.passwd, self.url, self.port, self.name
+        )
+    }
+
+    pub fn connection_string_no_db(&self) -> String {
+        format!(
+            "postgres://{}:{}@{}:{}/",
+            self.user, self.passwd, self.url, self.port
+        )
+    }
 }
 
 pub fn get_config(path: &Path) -> Result<Settings, config::ConfigError> {
-    let settings = Config::builder()
-        .add_source(File::from(path))
-        .set_override_option("db.connection_string", std::env::var("DATABASE_URL").ok())?
-        .build()?;
+    let settings = Config::builder().add_source(File::from(path)).build()?;
 
     settings.try_deserialize()
 }

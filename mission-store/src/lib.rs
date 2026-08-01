@@ -6,10 +6,8 @@ use crate::routes::missions::{get_mission, post_mission};
 use axum::routing::post;
 use axum::{Router, routing::get};
 use sqlx::PgPool;
-use std::sync::Arc;
 
 pub async fn run(pg_pool: PgPool, listener: tokio::net::TcpListener) -> Result<(), std::io::Error> {
-    let pg_pool = Arc::new(pg_pool);
     let app = Router::new()
         .route("/health_check", get(health_check))
         .route(

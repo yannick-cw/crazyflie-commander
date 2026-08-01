@@ -13,7 +13,7 @@ let
     pass = "password";
   };
   # this is a weird one -- not really static, gets injected somehow, picks first free port
-  pgPort = toString config.processes.postgres.ports.main.value;
+  pgPort = config.processes.postgres.ports.main.value;
 in
 {
   languages.rust = {
@@ -32,6 +32,10 @@ in
   services.postgres = {
     enable = true;
     listen_addresses = "localhost";
+    # so the user can create dbs and so..
+    initialScript = ''
+      ALTER ROLE "${db.user}" SUPERUSER;
+    '';
     # this is just the first port to look at - if it is taken, take +1
     # could be prevented with setting in devenv.yaml
     port = 5432;
@@ -40,7 +44,7 @@ in
 
   env = {
     # injects env variable in dev env, useful for sqlx to have compile time safety
-    DATABASE_URL = "postgres://${db.user}:${db.pass}@localhost:${pgPort}/${db.name}";
+    DATABASE_URL = "postgres://${db.user}:${db.pass}@localhost:${toString pgPort}/${db.name}";
     # prevents always needing running postgress when working, as database url above is present
     # and overwrites using /.sqlx cache
     SQLX_OFFLINE = "true";
@@ -55,24 +59,40 @@ in
     pkgs.cargo-watch
   ];
 
-  # creates a symlinked .env file - this is mostly just for rust rover
-  files.".env".text = ''
-    DATABASE_URL=${config.env.DATABASE_URL}
-  '';
-  dotenv.disableHint = true; # I just write to it and dont read it here
-
-  # creates a symlinked config, for rust rover
-  files."mission-store/configuration.yaml".yaml = {
-    db = {
-      connection_string = "${config.env.DATABASE_URL}";
+  files = {
+    # creates a symlinked .env file - this is mostly just for rust rover
+    ".env".text = ''
+      DATABASE_URL=${config.env.DATABASE_URL}
+      #SQLX_OFFLINE=true
+    '';
+    # creates a symlinked config, for rust rover
+    "mission-store/configuration.yaml".yaml = {
+      db = {
+        user = "${db.user}";
+        passwd = "${db.pass}";
+        port = pgPort;
+        url = "localhost";
+        name = "${db.name}";
+      };
     };
   };
+  dotenv.disableHint = true; # I just write to it and dont read it here
 
   # run with devenv tasks db:migrate - also auto runs when backend is started and when `devenv test` is run
   # @ready needs to be reached for postgres for this to run
   tasks."db:migrate" = {
     exec = "sqlx migrate run";
     after = [ "devenv:processes:postgres" ];
+  };
+
+  # so we always have a fresh state - means no missions locally for now
+  tasks."app:cleanup" = {
+    exec = ''
+      rm -rf .devenv/state/postgres
+      rm -rf .devenv/test-state/postgres
+    '';
+    before = [ "devenv:processes:postgres" ];
+
   };
 
   # needed for rust rover toolchain
@@ -88,7 +108,7 @@ in
 
   # waits for pg to start, also runs migration
   enterTest = ''
-    wait_for_port ${pgPort}
+    wait_for_port ${toString pgPort}
     cargo test
   '';
 

@@ -5,13 +5,12 @@ use drone_control::Command;
 use sqlx::PgPool;
 use sqlx::types::Uuid;
 use sqlx::types::chrono::Utc;
-use std::sync::Arc;
 
 pub async fn post_mission(
     Path(mission_name): Path<String>,
     // todo not the nicest testable form of dependency injection
     // should be rather just something more high level
-    State(pg_pool): State<Arc<PgPool>>,
+    State(pg_pool): State<PgPool>,
     Json(mission): Json<Vec<Command>>,
 ) -> StatusCode {
     let mission_json = serde_json::to_value(mission).unwrap();
@@ -26,7 +25,7 @@ pub async fn post_mission(
         mission_json,
         Utc::now()
     )
-    .execute(pg_pool.as_ref())
+    .execute(&pg_pool)
     .await
     // todo switch to trace logging
     .inspect_err(|err| println!("{err}"))
@@ -35,7 +34,7 @@ pub async fn post_mission(
 
 pub async fn get_mission(
     Path(mission_name): Path<String>,
-    State(pg_pool): State<Arc<PgPool>>,
+    State(pg_pool): State<PgPool>,
 ) -> Result<Json<Vec<Command>>, StatusCode> {
     let fetch_res = sqlx::query!(
         r#"
@@ -44,7 +43,7 @@ pub async fn get_mission(
         "#,
         mission_name,
     )
-    .fetch_optional(pg_pool.as_ref())
+    .fetch_optional(&pg_pool)
     .await
     .inspect_err(|err| println!("{err}"))
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
