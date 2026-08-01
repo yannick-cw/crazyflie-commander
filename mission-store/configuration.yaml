@@ -1,2 +1,1 @@
-db:
-    connection_string: "postgres://postgres:password@localhost:5432/missions"
+/nix/store/1n67gcfi4j70w752hijjw2piyyxbcfzs-mission-store-configuration.yaml

@@ -3,9 +3,11 @@ use reqwest::{Client, Response};
 use serde_json::Value;
 use sqlx::PgPool;
 use std::error::Error;
+use std::path::Path;
 
 pub async fn spawn_app() -> Result<(String, Client), Box<dyn Error>> {
-    let config = get_config()?;
+    let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration.yaml");
+    let config = get_config(&config_path)?;
     let connection = PgPool::connect(&config.db.connection_string).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();

@@ -33,6 +33,27 @@ pub async fn post_mission(
     .map_or(StatusCode::INTERNAL_SERVER_ERROR, |_| StatusCode::CREATED)
 }
 
-pub async fn get_mission(Path(mission_name): Path<String>) -> Json<Option<Vec<Command>>> {
-    Json(Some(Vec::new()))
+pub async fn get_mission(
+    Path(mission_name): Path<String>,
+    State(pg_pool): State<Arc<PgPool>>,
+) -> Result<Json<Vec<Command>>, StatusCode> {
+    let fetch_res = sqlx::query!(
+        r#"
+        SELECT commands FROM missions
+        WHERE name = $1
+        "#,
+        mission_name,
+    )
+    .fetch_optional(pg_pool.as_ref())
+    .await
+    .inspect_err(|err| println!("{err}"))
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
+
+    fetch_res.and_then(|maybe_row| match maybe_row {
+        None => Err(StatusCode::NOT_FOUND),
+        Some(record) => serde_json::from_value(record.commands)
+            .map(|cmds: Vec<Command>| Json(cmds))
+            .inspect_err(|err| println!("{err}"))
+            .or(Err(StatusCode::INTERNAL_SERVER_ERROR)),
+    })
 }

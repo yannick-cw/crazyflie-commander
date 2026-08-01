@@ -55,6 +55,13 @@ in
     DATABASE_URL=${config.env.DATABASE_URL}
   '';
 
+  # creates a symlinked config, for rust rover
+  files."mission-store/configuration.yaml".yaml = {
+    db = {
+      connection_string = "${config.env.DATABASE_URL}";
+    };
+  };
+
   # run with devenv tasks db:migrate - also auto runs when backend is started and when `devenv test` is run
   # @ready needs to be reached for postgres for this to run
   tasks."db:migrate" = {

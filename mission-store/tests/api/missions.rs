@@ -37,12 +37,14 @@ async fn retrieve_mission() -> Result<(), Box<dyn Error>> {
         ]"#;
     let json_mission: Value = serde_json::from_str(mission)?;
 
-    let _ = post(
+    let response = post(
         format!("{endpoint}/missions/test-mission"),
         &client,
         &json_mission,
     )
     .await?;
+    assert_eq!(StatusCode::CREATED, response.status());
+
     let mission: Value = get(format!("{endpoint}/missions/test-mission"), &client)
         .await?
         .json()

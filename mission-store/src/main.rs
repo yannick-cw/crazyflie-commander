@@ -2,10 +2,12 @@ use mission_store::config::get_config;
 use mission_store::run;
 use sqlx::PgPool;
 use std::error::Error;
+use std::path::Path;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let config = get_config()?;
+    let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration.yaml");
+    let config = get_config(&config_path)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
     let connection = PgPool::connect(&config.db.connection_string).await?;
 
