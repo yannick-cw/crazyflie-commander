@@ -3,6 +3,7 @@ drone-commander/missions/recordings/
 curriculum.md
 curriculum-swarm.md
 .direnv/
+.env
 target/
 .idea/
 .rust-rover/

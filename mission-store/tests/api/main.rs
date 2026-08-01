@@ -1,3 +1,3 @@
 mod health_check;
+mod missions;
 mod setup;
-mod submit_mission;

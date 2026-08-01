@@ -1,26 +1,22 @@
-use axum::extract::Path;
-use axum::http::StatusCode;
-use axum::routing::post;
-use axum::{Json, Router, routing::get};
-use drone_control::Command;
+pub mod config;
+mod routes;
 
-pub async fn run(listener: tokio::net::TcpListener) -> Result<(), std::io::Error> {
+use crate::routes::health_check::health_check;
+use crate::routes::missions::{get_mission, post_mission};
+use axum::routing::post;
+use axum::{Router, routing::get};
+use sqlx::PgPool;
+use std::sync::Arc;
+
+pub async fn run(pg_pool: PgPool, listener: tokio::net::TcpListener) -> Result<(), std::io::Error> {
+    let pg_pool = Arc::new(pg_pool);
     let app = Router::new()
         .route("/health_check", get(health_check))
-        .route("/missions/{mission_name}", post(post_mission));
+        .route(
+            "/missions/{mission_name}",
+            post(post_mission).get(get_mission),
+        )
+        .with_state(pg_pool);
 
     axum::serve(listener, app).await
-}
-
-async fn health_check() -> StatusCode {
-    StatusCode::OK
-}
-
-async fn post_mission(
-    Path(mission_name): Path<String>,
-    Json(mission): Json<Vec<Command>>,
-) -> StatusCode {
-    println!("{:?}", mission);
-    println!("{mission_name}");
-    StatusCode::CREATED
 }
