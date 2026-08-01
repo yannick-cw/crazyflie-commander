@@ -10,9 +10,19 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-
+    timeout-minutes: 30
+    env:
+        SQLX_OFFLINE: "true" # needed as database url is present, to make compiling without postgres possible
     steps:
     - uses: actions/checkout@v5
+    - uses: actions/cache@v4     
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: cargo-${{ runner.os }}-
     - uses: cachix/install-nix-action@v31
     - uses: cachix/cachix-action@v16
       with:
