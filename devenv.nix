@@ -63,10 +63,14 @@ in
     # creates a symlinked .env file - this is mostly just for rust rover
     ".env".text = ''
       DATABASE_URL=${config.env.DATABASE_URL}
-      #SQLX_OFFLINE=true
+      SQLX_OFFLINE=true
     '';
     # creates a symlinked config, for rust rover
     "mission-store/configuration.yaml".yaml = {
+      log_settings = {
+        log_filter = "info,tower_http=debug,sqlx::query=debug";
+        log_structured = false;
+      };
       db = {
         user = "${db.user}";
         passwd = "${db.pass}";

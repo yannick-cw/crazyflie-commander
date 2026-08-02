@@ -126,10 +126,10 @@ pub fn view(model: &Model, frame: &mut Frame) {
             ExecutionMode::Online => {}
         }
     }
-    if let State::FreeFlight(s) = &model.state {
-        if s.is_recording {
-            frame.render_widget(recording_panel(s), rec_area);
-        }
+    if let State::FreeFlight(s) = &model.state
+        && s.is_recording
+    {
+        frame.render_widget(recording_panel(s), rec_area);
     }
     frame.render_widget(speed_gauge(t), speed_area);
 }

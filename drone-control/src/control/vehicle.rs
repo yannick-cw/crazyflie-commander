@@ -180,18 +180,18 @@ impl Vehicle {
 
         let mut vx = MetersPerSecond(0.);
         if range_front < safe_distance {
-            vx = vx - v_change(range_front);
+            vx -= v_change(range_front);
         }
         if range_back < safe_distance {
-            vx = vx + v_change(range_back);
+            vx += v_change(range_back);
         }
 
         let mut vy = MetersPerSecond(0.);
         if range_left < safe_distance {
-            vy = vy - v_change(range_left);
+            vy -= v_change(range_left);
         }
         if range_right < safe_distance {
-            vy = vy + v_change(range_right);
+            vy += v_change(range_right);
         }
 
         let s = SetpointHover {

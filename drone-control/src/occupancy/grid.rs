@@ -53,6 +53,12 @@ impl Cell {
 
 const GRID_SIZE: usize = 120;
 const CELL_SIZE: Meters = Meters(0.05);
+impl Default for Grid {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Grid {
     pub fn new() -> Grid {
         let mut cells = [[Cell::default(); GRID_SIZE]; GRID_SIZE];

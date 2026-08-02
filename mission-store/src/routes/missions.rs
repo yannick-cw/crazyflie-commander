@@ -5,7 +5,9 @@ use drone_control::Command;
 use sqlx::PgPool;
 use sqlx::types::Uuid;
 use sqlx::types::chrono::Utc;
+use tracing::{Instrument, error, info, info_span};
 
+#[tracing::instrument(skip(pg_pool, mission))]
 pub async fn post_mission(
     Path(mission_name): Path<String>,
     // todo not the nicest testable form of dependency injection
@@ -15,7 +17,8 @@ pub async fn post_mission(
 ) -> StatusCode {
     let mission_json = serde_json::to_value(mission).unwrap();
 
-    sqlx::query!(
+    let db_span = info_span!("INSERT to db");
+    let response = sqlx::query!(
         r#"
         INSERT INTO missions (id, name, commands, created_at)
         VALUES ($1, $2, $3, $4)
@@ -26,16 +29,21 @@ pub async fn post_mission(
         Utc::now()
     )
     .execute(&pg_pool)
+    .instrument(db_span)
     .await
-    // todo switch to trace logging
-    .inspect_err(|err| println!("{err}"))
-    .map_or(StatusCode::INTERNAL_SERVER_ERROR, |_| StatusCode::CREATED)
+    .inspect_err(|err| error!("Failed to save mission with: {err:?}"))
+    .map_or(StatusCode::INTERNAL_SERVER_ERROR, |_| StatusCode::CREATED);
+
+    info!("New mission saved");
+    response
 }
 
+#[tracing::instrument(skip(pg_pool))]
 pub async fn get_mission(
     Path(mission_name): Path<String>,
     State(pg_pool): State<PgPool>,
 ) -> Result<Json<Vec<Command>>, StatusCode> {
+    let db_span = info_span!("Fetch from db");
     let fetch_res = sqlx::query!(
         r#"
         SELECT commands FROM missions
@@ -44,15 +52,16 @@ pub async fn get_mission(
         mission_name,
     )
     .fetch_optional(&pg_pool)
+    .instrument(db_span)
     .await
-    .inspect_err(|err| println!("{err}"))
+    .inspect_err(|err| error!("{err}"))
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
 
     fetch_res.and_then(|maybe_row| match maybe_row {
         None => Err(StatusCode::NOT_FOUND),
         Some(record) => serde_json::from_value(record.commands)
             .map(|cmds: Vec<Command>| Json(cmds))
-            .inspect_err(|err| println!("{err}"))
+            .inspect_err(|err| error!("{err}"))
             .or(Err(StatusCode::INTERNAL_SERVER_ERROR)),
     })
 }

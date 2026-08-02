@@ -1,13 +1,25 @@
 use mission_store::config::get_config;
 use mission_store::run;
+use mission_store::telemetry::trace_subscriber;
 use sqlx::PgPool;
 use std::error::Error;
 use std::path::Path;
+use tracing::info;
+use tracing::subscriber::set_global_default;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration.yaml");
     let config = get_config(&config_path)?;
+
+    set_global_default(trace_subscriber(
+        &config.log_settings.log_filter,
+        config.log_settings.log_structured,
+    ))
+    .expect("Could not set subscriber");
+
+    info!("starting service...");
+
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
     let connection = PgPool::connect(&config.db.connection_string()).await?;
 

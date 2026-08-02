@@ -1,19 +1,27 @@
 use mission_store::config::get_config;
+use mission_store::telemetry::trace_subscriber;
 use reqwest::{Client, Response};
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, Connection, PgConnection, PgPool};
 use std::error::Error;
 use std::path::Path;
+use std::sync::LazyLock;
+use tracing::subscriber::set_global_default;
 use uuid::Uuid;
 
+static INIT_TRACE: LazyLock<(), fn()> = LazyLock::new(|| {
+    // can be changed to debug for debugging
+    set_global_default(trace_subscriber("info", false)).expect("Could not set subscriber");
+});
+
 pub async fn spawn_app() -> Result<(String, Client), Box<dyn Error>> {
+    *INIT_TRACE;
+
     let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration.yaml");
     let mut config = get_config(&config_path)?;
     let db_name = Uuid::new_v4().to_string();
     config.db.name = db_name.clone();
     let mut connection = PgConnection::connect(&config.db.connection_string_no_db()).await?;
-
-    println!("conncetion str: {}", config.db.connection_string_no_db());
 
     // interesting - wrapper is needed to ensure I check on sql injection
     let _ = sqlx::raw_sql(AssertSqlSafe(format!(r#"CREATE DATABASE "{}""#, db_name)))

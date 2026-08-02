@@ -5,6 +5,13 @@ use std::path::Path;
 #[derive(Deserialize, Debug)]
 pub struct Settings {
     pub db: DBSettings,
+    pub log_settings: LogSettings,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct LogSettings {
+    pub log_filter: String,
+    pub log_structured: bool,
 }
 
 #[derive(Deserialize, Debug)]
