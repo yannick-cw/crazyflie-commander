@@ -114,6 +114,7 @@ in
   enterTest = ''
     wait_for_port ${toString pgPort}
     cargo test
+    (cd mission-store && cargo sqlx prepare --check)
   '';
 
   # this is not run for `devenv test`, and when run depends on postgres being ready first

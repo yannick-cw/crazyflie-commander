@@ -1,4 +1,5 @@
 use config::{Config, File};
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -17,25 +18,34 @@ pub struct LogSettings {
 #[derive(Deserialize, Debug)]
 pub struct DBSettings {
     pub user: String,
-    pub passwd: String,
+    pub passwd: SecretString,
     pub url: String,
     pub name: String,
     pub port: i16,
 }
 
 impl DBSettings {
-    pub fn connection_string(&self) -> String {
+    pub fn connection_string(&self) -> SecretString {
         format!(
             "postgres://{}:{}@{}:{}/{}",
-            self.user, self.passwd, self.url, self.port, self.name
+            self.user,
+            self.passwd.expose_secret(),
+            self.url,
+            self.port,
+            self.name
         )
+        .into()
     }
 
-    pub fn connection_string_no_db(&self) -> String {
+    pub fn connection_string_no_db(&self) -> SecretString {
         format!(
             "postgres://{}:{}@{}:{}/",
-            self.user, self.passwd, self.url, self.port
+            self.user,
+            self.passwd.expose_secret(),
+            self.url,
+            self.port
         )
+        .into()
     }
 }
 

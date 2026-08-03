@@ -17,7 +17,6 @@ pub async fn post_mission(
 ) -> StatusCode {
     let mission_json = serde_json::to_value(mission).unwrap();
 
-    let db_span = info_span!("INSERT to db");
     let response = sqlx::query!(
         r#"
         INSERT INTO missions (id, name, commands, created_at)
@@ -29,7 +28,7 @@ pub async fn post_mission(
         Utc::now()
     )
     .execute(&pg_pool)
-    .instrument(db_span)
+    .instrument(info_span!("INSERT to db"))
     .await
     .inspect_err(|err| error!("Failed to save mission with: {err:?}"))
     .map_or(StatusCode::INTERNAL_SERVER_ERROR, |_| StatusCode::CREATED);
@@ -43,7 +42,6 @@ pub async fn get_mission(
     Path(mission_name): Path<String>,
     State(pg_pool): State<PgPool>,
 ) -> Result<Json<Vec<Command>>, StatusCode> {
-    let db_span = info_span!("Fetch from db");
     let fetch_res = sqlx::query!(
         r#"
         SELECT commands FROM missions
@@ -52,7 +50,7 @@ pub async fn get_mission(
         mission_name,
     )
     .fetch_optional(&pg_pool)
-    .instrument(db_span)
+    .instrument(info_span!("Fetch from db"))
     .await
     .inspect_err(|err| error!("{err}"))
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
