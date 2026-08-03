@@ -1,3 +1,4 @@
+use crate::domain::MissionName;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -9,7 +10,7 @@ use tracing::{Instrument, error, info, info_span};
 
 #[tracing::instrument(skip(pg_pool, mission))]
 pub async fn post_mission(
-    Path(mission_name): Path<String>,
+    Path(mission_name): Path<MissionName>,
     // todo not the nicest testable form of dependency injection
     // should be rather just something more high level
     State(pg_pool): State<PgPool>,
@@ -23,7 +24,7 @@ pub async fn post_mission(
         VALUES ($1, $2, $3, $4)
         "#,
         Uuid::new_v4(),
-        mission_name,
+        mission_name.as_ref(),
         mission_json,
         Utc::now()
     )
@@ -39,7 +40,7 @@ pub async fn post_mission(
 
 #[tracing::instrument(skip(pg_pool))]
 pub async fn get_mission(
-    Path(mission_name): Path<String>,
+    Path(mission_name): Path<MissionName>,
     State(pg_pool): State<PgPool>,
 ) -> Result<Json<Vec<Command>>, StatusCode> {
     let fetch_res = sqlx::query!(
@@ -47,7 +48,7 @@ pub async fn get_mission(
         SELECT commands FROM missions
         WHERE name = $1
         "#,
-        mission_name,
+        mission_name.as_ref(),
     )
     .fetch_optional(&pg_pool)
     .instrument(info_span!("Fetch from db"))
