@@ -1,21 +1,31 @@
-use crate::domain::Error::ParseError;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use drone_control::Telemetry;
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
+use tracing::{error, warn};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Deserialize, Serialize, sqlx::Type)]
 #[sqlx(transparent)]
 #[serde(try_from = "String")]
 pub struct ValidName(String);
 
+impl Deref for ValidName {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
 impl ValidName {
-    pub fn parse(s: String) -> Res<ValidName> {
+    pub fn parse(s: String) -> Result<ValidName, String> {
         let empty = s.trim().is_empty();
         let too_long = s.len() > 200;
         let contains_weirdness = s.chars().any(|c| ['\\', '%', '<', '>'].contains(&c));
 
         if empty || too_long || contains_weirdness {
-            Err(ParseError(format!("name `{}`", s)))
+            Err(format!("name `{}`", s))
         } else {
             Ok(Self(s))
         }
@@ -32,9 +42,9 @@ impl AsRef<String> for ValidName {
 }
 
 impl TryFrom<String> for ValidName {
-    type Error = Error;
+    type Error = String;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: String) -> Result<Self, String> {
         ValidName::parse(value)
     }
 }
@@ -48,8 +58,29 @@ pub struct Flight {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Failed parsing: ")]
-    ParseError(String),
+    #[error("{0}")]
+    ValidationError(String),
+    #[error("Did not find: {0}")]
+    NotFound(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        match self {
+            Error::ValidationError(validation) => {
+                warn!("Failed validation {:#}", validation);
+                (StatusCode::BAD_REQUEST, validation).into_response()
+            }
+            Error::NotFound(missing) => {
+                (StatusCode::NOT_FOUND, format!("Did not find `{}`", missing)).into_response()
+            }
+            Error::UnexpectedError(_) => {
+                error!("{:#}", self);
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    }
 }
 /// Result type for interacting with this crate.
 pub type Res<A> = Result<A, Error>;

@@ -56,6 +56,19 @@ async fn retrieve_mission() -> Result<(), Box<dyn Error>> {
 }
 
 #[tokio::test]
+async fn get_404() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+    let mission_name = "no_mission";
+
+    let response = get(format!("{endpoint}/missions/{mission_name}"), &client).await?;
+
+    assert_eq!(StatusCode::NOT_FOUND, response.status());
+    assert_eq!("Did not find `mission: no_mission`", response.text().await?);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn fail_submit_invalid_missions() -> Result<(), Box<dyn Error>> {
     let (endpoint, client) = spawn_app().await?;
 
@@ -73,6 +86,14 @@ async fn fail_submit_invalid_missions() -> Result<(), Box<dyn Error>> {
     .await?;
 
     assert_eq!(StatusCode::UNPROCESSABLE_ENTITY, response.status());
+    assert_eq!(
+        "Failed to deserialize the JSON body into the target type: \
+        [0]: unknown variant `TakeXXX`, expected one of `Takeoff`, \
+        `Move`, `MoveToWaypoint`, `SmoothPath`, \
+        `Setpoints`, `BilliardBox`, `Orbit`, `Hover`, `Land`, \
+        `OnVehicleTrajectory` at line 1 column 11",
+        response.text().await?
+    );
 
     Ok(())
 }
@@ -99,6 +120,7 @@ async fn reject_invalid_mission_names() -> Result<(), Box<dyn Error>> {
             name,
             descr
         );
+        assert!(&response.text().await?.starts_with("Invalid URL"));
     }
 
     Ok(())

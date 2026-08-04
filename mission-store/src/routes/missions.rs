@@ -1,4 +1,6 @@
-use crate::domain::ValidName;
+use crate::domain::Error::NotFound;
+use crate::domain::{Res, ValidName};
+use anyhow::Context;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -6,19 +8,17 @@ use drone_control::Command;
 use sqlx::PgPool;
 use sqlx::types::Uuid;
 use sqlx::types::chrono::Utc;
-use tracing::{Instrument, error, info, info_span};
+use tracing::{Instrument, info, info_span};
 
 #[tracing::instrument(skip(pg_pool, mission))]
 pub async fn post_mission(
     Path(mission_name): Path<ValidName>,
-    // todo not the nicest testable form of dependency injection
-    // should be rather just something more high level
     State(pg_pool): State<PgPool>,
     Json(mission): Json<Vec<Command>>,
-) -> StatusCode {
+) -> Res<StatusCode> {
     let mission_json = serde_json::to_value(mission).unwrap();
 
-    let response = sqlx::query!(
+    sqlx::query!(
         r#"
         INSERT INTO missions (id, name, commands, created_at)
         VALUES ($1, $2, $3, $4)
@@ -31,19 +31,21 @@ pub async fn post_mission(
     .execute(&pg_pool)
     .instrument(info_span!("INSERT to db"))
     .await
-    .inspect_err(|err| error!("Failed to save mission with: {err:?}"))
-    .map_or(StatusCode::INTERNAL_SERVER_ERROR, |_| StatusCode::CREATED);
+    .context(format!(
+        "Failed to insert mission {} to db",
+        mission_name.as_ref()
+    ))?;
 
     info!("New mission saved");
-    response
+    Ok(StatusCode::CREATED)
 }
 
 #[tracing::instrument(skip(pg_pool))]
 pub async fn get_mission(
     Path(mission_name): Path<ValidName>,
     State(pg_pool): State<PgPool>,
-) -> Result<Json<Vec<Command>>, StatusCode> {
-    sqlx::query!(
+) -> Res<Json<Vec<Command>>> {
+    let res = sqlx::query!(
         r#"
         SELECT commands as "commands: sqlx::types::Json<Vec<Command>>" FROM missions
         WHERE name = $1
@@ -53,10 +55,10 @@ pub async fn get_mission(
     .fetch_optional(&pg_pool)
     .instrument(info_span!("Fetch from db"))
     .await
-    .inspect_err(|err| error!("{err}"))
-    .map_or(Err(StatusCode::INTERNAL_SERVER_ERROR), |res| {
-        res.map_or(Err(StatusCode::NOT_FOUND), |record| {
-            Ok(Json(record.commands.0))
-        })
-    })
+    .context("Failed fetching mission from db")?;
+
+    res.map_or(
+        Err(NotFound(format!("mission: {}", mission_name.as_ref()))),
+        |record| Ok(Json(record.commands.0)),
+    )
 }

@@ -98,6 +98,10 @@ async fn reject_non_existing_mission() -> Result<(), Box<dyn Error>> {
     .await?;
 
     assert_eq!(StatusCode::BAD_REQUEST, response.status());
+    assert_eq!(
+        "Referenced mission `non_existing_mission` does not exist",
+        response.text().await?
+    );
 
     Ok(())
 }
@@ -125,6 +129,19 @@ async fn get_flight() -> Result<(), Box<dyn Error>> {
         .await?;
 
     assert_eq!(json_flight, flight);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn get_404() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+    let flight_name = "no_flight";
+
+    let response = get(format!("{endpoint}/flights/{flight_name}"), &client).await?;
+
+    assert_eq!(StatusCode::NOT_FOUND, response.status());
+    assert_eq!("Did not find `flight: no_flight`", response.text().await?);
 
     Ok(())
 }
