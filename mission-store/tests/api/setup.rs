@@ -16,7 +16,7 @@ pub async fn spawn_app() -> Result<(String, Client), Box<dyn Error>> {
         set_global_default(trace_subscriber("info", false)).expect("Could not set subscriber")
     });
 
-    let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration.yaml");
+    let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration");
     let mut config = get_config(&config_path)?;
     let db_name = Uuid::new_v4().to_string();
     config.db.name = db_name.clone();

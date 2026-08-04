@@ -1,12 +1,15 @@
 use crate::domain::Error::ParseError;
-use serde::Deserialize;
+use chrono::{DateTime, Utc};
+use drone_control::Telemetry;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Deserialize)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Deserialize, Serialize, sqlx::Type)]
+#[sqlx(transparent)]
 #[serde(try_from = "String")]
-pub struct MissionName(String);
+pub struct ValidName(String);
 
-impl MissionName {
-    pub fn parse(s: String) -> Res<MissionName> {
+impl ValidName {
+    pub fn parse(s: String) -> Res<ValidName> {
         let empty = s.trim().is_empty();
         let too_long = s.len() > 200;
         let contains_weirdness = s.chars().any(|c| ['\\', '%', '<', '>'].contains(&c));
@@ -17,20 +20,30 @@ impl MissionName {
             Ok(Self(s))
         }
     }
+    pub fn inner(self) -> String {
+        self.0
+    }
 }
 
-impl AsRef<String> for MissionName {
+impl AsRef<String> for ValidName {
     fn as_ref(&self) -> &String {
         &self.0
     }
 }
 
-impl TryFrom<String> for MissionName {
+impl TryFrom<String> for ValidName {
     type Error = Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        MissionName::parse(value)
+        ValidName::parse(value)
     }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct Flight {
+    pub date: DateTime<Utc>,
+    pub telemetry: Vec<Telemetry>,
+    pub mission: Option<ValidName>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -69,10 +82,10 @@ mod tests {
     }
 
     #[derive(Clone, Debug, Dummy)]
-    struct ValidName(#[dummy(faker = "Name(locales::EN)")] String);
+    struct FakeName(#[dummy(faker = "Name(locales::EN)")] String);
 
     #[quickcheck]
-    fn prop(name: Faked<ValidName>) -> bool {
-        MissionName::parse(name.0.0).is_ok()
+    fn prop(name: Faked<FakeName>) -> bool {
+        ValidName::parse(name.0.0).is_ok()
     }
 }

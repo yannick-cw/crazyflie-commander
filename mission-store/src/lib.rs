@@ -3,6 +3,7 @@ pub mod domain;
 mod routes;
 pub mod telemetry;
 
+use crate::routes::flights::{get_flight, post_flight};
 use crate::routes::health_check::health_check;
 use crate::routes::missions::{get_mission, post_mission};
 use axum::http::Request;
@@ -34,6 +35,7 @@ pub async fn run(pg_pool: PgPool, listener: tokio::net::TcpListener) -> Result<(
             "/missions/{mission_name}",
             post(post_mission).get(get_mission),
         )
+        .route("/flights/{flight_name}", post(post_flight).get(get_flight))
         .with_state(pg_pool)
         .layer(service);
 

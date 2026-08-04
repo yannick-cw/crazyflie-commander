@@ -1,4 +1,4 @@
-use crate::domain::MissionName;
+use crate::domain::ValidName;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -10,7 +10,7 @@ use tracing::{Instrument, error, info, info_span};
 
 #[tracing::instrument(skip(pg_pool, mission))]
 pub async fn post_mission(
-    Path(mission_name): Path<MissionName>,
+    Path(mission_name): Path<ValidName>,
     // todo not the nicest testable form of dependency injection
     // should be rather just something more high level
     State(pg_pool): State<PgPool>,
@@ -40,12 +40,12 @@ pub async fn post_mission(
 
 #[tracing::instrument(skip(pg_pool))]
 pub async fn get_mission(
-    Path(mission_name): Path<MissionName>,
+    Path(mission_name): Path<ValidName>,
     State(pg_pool): State<PgPool>,
 ) -> Result<Json<Vec<Command>>, StatusCode> {
-    let fetch_res = sqlx::query!(
+    sqlx::query!(
         r#"
-        SELECT commands FROM missions
+        SELECT commands as "commands: sqlx::types::Json<Vec<Command>>" FROM missions
         WHERE name = $1
         "#,
         mission_name.as_ref(),
@@ -54,13 +54,9 @@ pub async fn get_mission(
     .instrument(info_span!("Fetch from db"))
     .await
     .inspect_err(|err| error!("{err}"))
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
-
-    fetch_res.and_then(|maybe_row| match maybe_row {
-        None => Err(StatusCode::NOT_FOUND),
-        Some(record) => serde_json::from_value(record.commands)
-            .map(|cmds: Vec<Command>| Json(cmds))
-            .inspect_err(|err| error!("{err}"))
-            .or(Err(StatusCode::INTERNAL_SERVER_ERROR)),
+    .map_or(Err(StatusCode::INTERNAL_SERVER_ERROR), |res| {
+        res.map_or(Err(StatusCode::NOT_FOUND), |record| {
+            Ok(Json(record.commands.0))
+        })
     })
 }

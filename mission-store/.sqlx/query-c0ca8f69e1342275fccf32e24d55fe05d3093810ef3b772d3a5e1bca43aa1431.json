@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT commands FROM missions\n        WHERE name = $1\n        ",
+  "query": "\n        SELECT commands as \"commands: sqlx::types::Json<Vec<Command>>\" FROM missions\n        WHERE name = $1\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "commands",
+        "name": "commands: sqlx::types::Json<Vec<Command>>",
         "type_info": "Json",
         "origin": {
           "Table": {
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "79fdfb9abcdcd1609400c321adfe44317957574a7c1725bc5eb964c2af392151"
+  "hash": "c0ca8f69e1342275fccf32e24d55fe05d3093810ef3b772d3a5e1bca43aa1431"
 }

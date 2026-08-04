@@ -1,0 +1,9 @@
+[db]
+name = "missions"
+port = 5432
+url = "localhost"
+user = "postgres"
+
+[log_settings]
+log_filter = "info,tower_http=debug,sqlx::query=debug"
+log_structured = "false"

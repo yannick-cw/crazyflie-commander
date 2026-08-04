@@ -10,7 +10,7 @@ use tracing::subscriber::set_global_default;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration.yaml");
+    let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("configuration");
     let config = get_config(&config_path)?;
 
     set_global_default(trace_subscriber(

@@ -1,0 +1,5 @@
+[log_settings]
+log_filter = "info,tower_http=info"
+log_structured = "true"
+
+

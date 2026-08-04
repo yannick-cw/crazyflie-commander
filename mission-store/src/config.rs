@@ -1,6 +1,7 @@
-use config::{Config, File};
+use config::{Config, Environment, File};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
+use std::env::var;
 use std::path::Path;
 
 #[derive(Deserialize, Debug)]
@@ -49,8 +50,19 @@ impl DBSettings {
     }
 }
 
-pub fn get_config(path: &Path) -> Result<Settings, config::ConfigError> {
-    let settings = Config::builder().add_source(File::from(path)).build()?;
+pub fn get_config(config_dir: &Path) -> Result<Settings, config::ConfigError> {
+    let env = var("APP_ENVIRONMENT").unwrap_or("local".into());
+    let env_filename = format!("{env}.toml");
+    let settings = Config::builder()
+        .add_source(File::from(config_dir.join("base.toml")))
+        .add_source(File::from(config_dir.join(env_filename)))
+        // allows APP_DB__PASSWD=abc to get into the conf correctly
+        .add_source(
+            Environment::with_prefix("APP")
+                .prefix_separator("_")
+                .separator("__"),
+        )
+        .build()?;
 
     settings.try_deserialize()
 }

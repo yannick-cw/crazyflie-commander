@@ -392,6 +392,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-link",
 ]
@@ -2067,6 +2068,7 @@ name = "mission-store"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "config",
  "drone-control",
  "fake",
@@ -4272,6 +4274,7 @@ dependencies = [
  "atomic",
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

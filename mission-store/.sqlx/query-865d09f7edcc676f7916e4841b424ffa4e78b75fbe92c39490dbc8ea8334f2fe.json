@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT date, telemetry AS \"telemetry: sqlx::types::Json<Vec<Telemetry>>\", mission as \"mission: ValidName\" FROM flights\n        WHERE name = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "date",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "flights",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "telemetry: sqlx::types::Json<Vec<Telemetry>>",
+        "type_info": "Json",
+        "origin": {
+          "Table": {
+            "table": "flights",
+            "name": "telemetry"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "mission: ValidName",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "flights",
+            "name": "mission"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "865d09f7edcc676f7916e4841b424ffa4e78b75fbe92c39490dbc8ea8334f2fe"
+}

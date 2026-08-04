@@ -2,7 +2,6 @@ use crate::setup::{get, post, spawn_app};
 use reqwest::StatusCode;
 use serde_json::Value;
 use std::error::Error;
-use uuid::Uuid;
 
 pub fn simple_mission() -> &'static str {
     r#"
@@ -16,11 +15,10 @@ pub fn simple_mission() -> &'static str {
 async fn submit_mission() -> Result<(), Box<dyn Error>> {
     let (endpoint, client) = spawn_app().await?;
 
-    let mission_name = format! {"mission_{}", Uuid::new_v4()};
     let json_mission: Value = serde_json::from_str(simple_mission())?;
 
     let response = post(
-        format!("{endpoint}/missions/{mission_name}"),
+        format!("{endpoint}/missions/test_mission"),
         &client,
         &json_mission,
     )
@@ -35,7 +33,7 @@ async fn submit_mission() -> Result<(), Box<dyn Error>> {
 async fn retrieve_mission() -> Result<(), Box<dyn Error>> {
     let (endpoint, client) = spawn_app().await?;
 
-    let mission_name = format! {"mission_{}", Uuid::new_v4()};
+    let mission_name = "test_mission";
 
     let json_mission: Value = serde_json::from_str(simple_mission())?;
 
