@@ -194,7 +194,8 @@ impl<U: CommandUnit> Ratatea for Program<U> {
                 (model, next_cmd)
             }
             (State::FreeFlight(state), Msg::FreeFlight(msg)) => {
-                let next_msg = free_flight::update(state, msg).lift_msg(Msg::FreeFlight);
+                let next_msg = free_flight::update(state, msg, self.mission_loader.clone())
+                    .lift_msg(Msg::FreeFlight);
                 (model, next_msg)
             }
             // (State::MissionPlan(), _) => (model1, Cmd::none()),

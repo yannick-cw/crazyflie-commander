@@ -99,7 +99,7 @@ in
   };
 
   # populate base missions
-  tasks."backed:missions" = {
+  tasks."backed:missions" = lib.optionalAttrs (!config.devenv.isTesting) {
     exec = ''
       ./scripts/upload-missions.sh
     '';

@@ -1,20 +1,23 @@
+use crate::pages::free_flight::SetpointRecording;
 use async_trait::async_trait;
-use drone_control::Command;
+use drone_control::{Command, Meters};
 use futures::StreamExt;
-use reqwest::{Client, Url};
+use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::io::Error;
 use std::path::Path;
+use std::time::Duration;
 use tokio::fs;
 use tokio::fs::DirEntry;
 use tokio_stream::wrappers::ReadDirStream;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 // not send as not share between threads right now
 #[async_trait(?Send)]
 pub trait MissionService {
     async fn list_missions(&self) -> Vec<(String, Vec<Command>)>;
     async fn list_recordings(&self) -> Vec<(String, Vec<Command>)>;
+    async fn store_recoding(&self, recording: Vec<SetpointRecording>);
 }
 // --- Http Loader
 #[derive(Debug, Default, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
@@ -49,6 +52,28 @@ impl MissionService for HttpMission {
     async fn list_recordings(&self) -> Vec<(String, Vec<Command>)> {
         vec![]
     }
+
+    async fn store_recoding(&self, recording: Vec<SetpointRecording>) {
+        if let Some((name, mission)) = recording_to_mission(recording) {
+            let client = Client::new();
+
+            let http_res: color_eyre::Result<StatusCode> = async {
+                let uri = self.url.clone().join("missions/")?.join(&name)?;
+                info!("{uri}");
+                let res = client.post(uri).json(&mission).send().await?;
+                Ok(res.status())
+            }
+            .await;
+
+            match http_res {
+                Ok(code) if code == StatusCode::CREATED => info!("Stored recorded flight {}", name),
+                Ok(other_code) => {
+                    error!("Could not store flight {} - got code {}", name, other_code)
+                }
+                Err(err) => error!("Failed storing mission at {} with {}", self.url, err),
+            }
+        }
+    }
 }
 
 // --- File Loader
@@ -64,6 +89,23 @@ impl MissionService for FileMission {
 
     async fn list_recordings(&self) -> Vec<(String, Vec<Command>)> {
         read_missions(&Path::new(&self.file_path).join("recordings")).await
+    }
+
+    async fn store_recoding(&self, recording: Vec<SetpointRecording>) {
+        if let Some((name, mission)) = recording_to_mission(recording) {
+            match fs::write(
+                format!(
+                    "./drone-commander/{}/recordings/flight-{}.json",
+                    &self.file_path, name
+                ),
+                serde_json::to_string(&mission).unwrap(),
+            )
+            .await
+            {
+                Ok(_) => info!("stored new recording"),
+                Err(err) => warn!("could not safe recording {err}"),
+            }
+        }
     }
 }
 
@@ -105,11 +147,41 @@ async fn read_file(entry: &DirEntry) -> Result<Option<(String, Vec<Command>)>, E
     }
 }
 
+// util -----------------------------------------------
+fn recording_to_mission(recording: Vec<SetpointRecording>) -> Option<(String, Vec<Command>)> {
+    let first_p = recording.first()?;
+    let z = recording.last().map(|p| p.z.0).unwrap_or(2.0);
+    // z=1m => 2s, z=0.5m => 1s
+    let land_duration = Duration::from_secs_f32((z.max(0.0) / 0.5).min(3.0));
+
+    let mission = vec![
+        Command::Takeoff {
+            height: Meters(0.5),
+            duration: Duration::from_secs(1),
+        },
+        Command::MoveToWaypoint {
+            x: first_p.x,
+            y: first_p.y,
+            z: first_p.z,
+            duration: Duration::from_secs(2),
+        },
+        Command::Setpoints {
+            points: recording.iter().map(|p| p.to_setpoint()).collect(),
+        },
+        Command::Land {
+            duration: land_duration,
+        },
+    ];
+
+    let mission_name = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    Some((mission_name, mission))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_support::init_tracing;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{method, path, path_regex};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
@@ -140,5 +212,30 @@ mod tests {
         let missions = http.list_missions().await;
 
         assert_eq!(vec![("test_mission".to_string(), test_mission)], missions);
+    }
+
+    #[tokio::test]
+    async fn store_recording_http() {
+        init_tracing();
+        let test_recording = vec![SetpointRecording {
+            x: Default::default(),
+            y: Default::default(),
+            z: Default::default(),
+            yaw_degrees: 0.0,
+        }];
+
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path_regex(r"^/missions/.+$"))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let http = HttpMission {
+            url: mock_server.uri().parse().unwrap(),
+        };
+
+        http.store_recoding(test_recording).await;
     }
 }

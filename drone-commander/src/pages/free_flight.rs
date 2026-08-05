@@ -1,16 +1,15 @@
+use crate::external::mission_service::MissionService;
 use crate::pages::free_flight::Movement::*;
 use crate::pages::free_flight::Msg::{
     Abort, CommandSet, ExitPage, Move, StartRecording, StopRecording,
 };
 use Msg::{SendNextMove, TakeOffDone};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use drone_control::{Command, Meters, MetersPerSecond, MotionCommand, Setpoint, SetpointHover};
+use drone_control::{Meters, MetersPerSecond, MotionCommand, Setpoint, SetpointHover};
 use ratatea::Cmd;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
-use tokio::fs;
+use std::rc::Rc;
 use tokio::sync::mpsc;
-use tracing::{info, warn};
 
 // model -----------------
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,7 +88,7 @@ pub enum Movement {
 
 // update -----------------
 
-pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
+pub fn update(model: &mut Model, msg: Msg, mission_svc: Rc<dyn MissionService>) -> Cmd<Msg> {
     let sender = model.motion_sender.clone();
     match msg {
         Move(Vx(new_x)) => {
@@ -179,52 +178,13 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
         StopRecording => {
             let recording = std::mem::take(&mut model.recording);
             model.is_recording = false;
-            Cmd::new(store_recoding(recording), |_| CommandSet)
+            Cmd::new(
+                async move { mission_svc.store_recoding(recording).await },
+                |_| CommandSet,
+            )
         }
         // handled by parent
         ExitPage => Cmd::none(),
-    }
-}
-
-// util -----------------------------------------------
-async fn store_recoding(recording: Vec<SetpointRecording>) {
-    if let Some(first_p) = recording.first() {
-        let z = recording.last().map(|p| p.z.0).unwrap_or(2.0);
-        // z=1m => 2s, z=0.5m => 1s
-        let land_duration = Duration::from_secs_f32((z.max(0.0) / 0.5).min(3.0));
-
-        let mission = vec![
-            Command::Takeoff {
-                height: Meters(0.5),
-                duration: Duration::from_secs(1),
-            },
-            Command::MoveToWaypoint {
-                x: first_p.x,
-                y: first_p.y,
-                z: first_p.z,
-                duration: Duration::from_secs(2),
-            },
-            Command::Setpoints {
-                points: recording.iter().map(|p| p.to_setpoint()).collect(),
-            },
-            Command::Land {
-                duration: land_duration,
-            },
-        ];
-
-        let mission_name = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-
-        match fs::write(
-            format!("./drone-commander/missions/recordings/flight-{mission_name}.json"),
-            serde_json::to_string(&mission).unwrap(),
-        )
-        .await
-        {
-            Ok(_) => info!("stored new recording"),
-            Err(err) => warn!("could not safe recording {err}"),
-        }
-    } else {
-        warn!("Trying store empty recording")
     }
 }
 
