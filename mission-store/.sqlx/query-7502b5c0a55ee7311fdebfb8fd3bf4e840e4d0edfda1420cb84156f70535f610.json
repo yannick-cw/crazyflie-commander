@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE tokens\n        SET revoked_at = $1\n        WHERE label = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7502b5c0a55ee7311fdebfb8fd3bf4e840e4d0edfda1420cb84156f70535f610"
+}

@@ -1,3 +1,4 @@
+mod admin;
 mod flights;
 mod health_check;
 mod missions;

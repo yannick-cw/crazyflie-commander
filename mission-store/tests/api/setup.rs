@@ -1,6 +1,6 @@
 use mission_store::config::get_config;
 use mission_store::telemetry::trace_subscriber;
-use reqwest::{Client, Response};
+use reqwest::{Client, Response, header};
 use secrecy::ExposeSecret;
 use serde_json::Value;
 use sqlx::{AssertSqlSafe, Connection, PgConnection, PgPool};
@@ -35,9 +35,26 @@ pub async fn spawn_app() -> Result<(String, Client), Box<dyn Error>> {
     let port = listener.local_addr()?.port();
     tokio::spawn(mission_store::run(pg_pool, listener));
 
-    let client = Client::new();
+    let endpoint = format!("http://127.0.0.1:{}", port);
+    let no_auth_client = Client::new();
+    let tkn_req: Value = serde_json::from_str(r#"{ "label": "master_key" }"#)?;
+    let tkn_res: Value = no_auth_client
+        .post(format!("{endpoint}/admin/tokens"))
+        .json(&tkn_req)
+        .send()
+        .await?
+        .json()
+        .await?;
+    let master_tkn = tkn_res["token"].as_str().ok_or("Token failed.")?;
 
-    Ok((format!("http://127.0.0.1:{}", port), client))
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        header::AUTHORIZATION,
+        header::HeaderValue::from_str(&format!("Bearer {master_tkn}"))?,
+    );
+    let authed_client = Client::builder().default_headers(headers).build()?;
+
+    Ok((endpoint, authed_client))
 }
 
 pub async fn post(
@@ -48,7 +65,10 @@ pub async fn post(
     client.post(url).json(&json_mission).send().await
 }
 
+pub async fn post_no_body(url: String, client: &Client) -> Result<Response, reqwest::Error> {
+    client.post(url).send().await
+}
+
 pub async fn get(url: String, client: &Client) -> Result<Response, Box<dyn Error>> {
-    let r = client.get(url).send().await?;
-    Ok(r)
+    Ok(client.get(url).send().await?)
 }

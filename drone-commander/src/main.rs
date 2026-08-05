@@ -110,10 +110,10 @@ async fn main() -> color_eyre::Result<()> {
 // - [x] Spin-scan: hover + slow yaw, accumulate ranges + pose into a 2D room outline at that height - render?? - use then as fence?
 //   - no spin, just collecting when flying slowly
 // - [x] post mission stops telemetry? - more like when battery abort telemetry stops changing? -- fixed by borrow bug
+// - [x] use local backend + postgres (optionally) for missions
+// - [x] use local backend + postgres (optionally) for recordings
 // ---- NEXT
-// - [ ] use local backend + postgres (optionally) for missions
 // --- NEXT
-// - [ ] use local backend + postgres (optionally) for recordings
 // - [ ] use local backend + postgres (optionally) for storing flights
 // - [ ] webserver path: TUI stores no json missions, server does, can /post missions, /get missions and execute, /post mission results (grid + telemetry?), /post replays as missions
 //       maybe serve a web page rendering a mission executed log + the grid created for that, /get grid for room id, auth for endpoints and page (bearer tkn - login form)!
