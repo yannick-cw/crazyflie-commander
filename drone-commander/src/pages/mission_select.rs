@@ -1,16 +1,11 @@
+use crate::external::mission_service::MissionService;
 use crate::pages::mission_select::Msg::*;
 use crate::program::NavigationMessage;
 use crate::program::NavigationMessage::{Down, Select, Up};
 use crossterm::event::{KeyCode, KeyEvent};
 use drone_control::Command;
-use futures::StreamExt;
 use ratatea::Cmd;
-use std::io::Error;
-use std::path::Path;
-use tokio::fs;
-use tokio::fs::DirEntry;
-use tokio_stream::wrappers::ReadDirStream;
-use tracing::warn;
+use std::rc::Rc;
 
 // model ------------------------------------
 #[derive(Debug, Default)]
@@ -31,7 +26,7 @@ pub enum Msg {
 }
 
 // update ------------------------------------
-pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
+pub fn update(model: &mut Model, msg: Msg, mission_loader: Rc<dyn MissionService>) -> Cmd<Msg> {
     let total_missions = model.missions.len() + model.recorded_missions.len();
     match msg {
         Nav(Down) if total_missions > 0 => {
@@ -60,10 +55,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
             Cmd::none()
         }
         LoadMissions => Cmd::new(
-            async {
+            async move {
                 (
-                    read_missions("missions").await,
-                    read_missions("missions/recordings").await,
+                    mission_loader.list_missions().await,
+                    mission_loader.list_recordings().await,
                 )
             },
             |(m, rm)| Msg::MissionsLoaded(m, rm),
@@ -71,46 +66,6 @@ pub fn update(model: &mut Model, msg: Msg) -> Cmd<Msg> {
         // ---- handle by parent
         ExitSelected(_, _) => Cmd::none(),
         ExitPage => Cmd::none(),
-    }
-}
-
-// utility -------------------------------
-// relative path e.g. missions
-async fn read_missions(path: &str) -> Vec<(String, Vec<Command>)> {
-    match fs::read_dir(Path::new("./drone-commander").join(path)).await {
-        Ok(dir) => {
-            ReadDirStream::new(dir)
-                .filter_map(|entry| async {
-                    match read_file(&entry.ok()?).await {
-                        Ok(Some(mission)) => Some(mission),
-                        Ok(None) => None,
-                        Err(e) => {
-                            warn!("skipping: {e}");
-                            None
-                        }
-                    }
-                })
-                .collect()
-                .await
-        }
-        Err(err) => {
-            warn!("Could not load any missions {err}");
-            vec![]
-        }
-    }
-}
-
-async fn read_file(entry: &DirEntry) -> Result<Option<(String, Vec<Command>)>, Error> {
-    let file_path = entry.path();
-    if entry.file_type().await?.is_file() && file_path.extension() == Some("json".as_ref()) {
-        let file_content = fs::read_to_string(&file_path).await?;
-
-        let file_name = file_path.file_stem().and_then(|s| s.to_str()).unwrap();
-
-        let mission: Vec<Command> = serde_json::from_str(&file_content)?;
-        Ok(Some((file_name.to_owned(), mission)))
-    } else {
-        Ok(None)
     }
 }
 

@@ -1,10 +1,16 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use drone_control::Telemetry;
+use drone_control::{Command, Telemetry};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use tracing::{error, warn};
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct MissionResponse {
+    pub name: ValidName,
+    pub mission: Vec<Command>,
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Deserialize, Serialize, sqlx::Type)]
 #[sqlx(transparent)]
@@ -82,7 +88,7 @@ impl IntoResponse for Error {
         }
     }
 }
-/// Result type for interacting with this crate.
+
 pub type Res<A> = Result<A, Error>;
 
 #[cfg(test)]

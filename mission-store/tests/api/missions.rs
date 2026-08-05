@@ -1,4 +1,5 @@
 use crate::setup::{get, post, spawn_app};
+use mission_store::domain::MissionResponse;
 use reqwest::StatusCode;
 use serde_json::Value;
 use std::error::Error;
@@ -51,6 +52,31 @@ async fn retrieve_mission() -> Result<(), Box<dyn Error>> {
         .await?;
 
     assert_eq!(json_mission, mission);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn retrieve_all_mission() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+
+    let mission_name = "test_mission";
+    let json_mission: Value = serde_json::from_str(simple_mission())?;
+    let mission_names: Vec<_> = (1..10).map(|i| format!("{mission_name}{i}")).collect();
+
+    for n in mission_names.clone() {
+        post(format!("{endpoint}/missions/{n}"), &client, &json_mission).await?;
+    }
+
+    let missions: Vec<MissionResponse> = get(format!("{endpoint}/missions"), &client)
+        .await?
+        .json()
+        .await?;
+
+    let mut result_names: Vec<_> = missions.into_iter().map(|m| m.name.inner()).collect();
+    result_names.sort();
+
+    assert_eq!(mission_names, result_names);
 
     Ok(())
 }

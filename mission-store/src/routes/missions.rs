@@ -1,5 +1,5 @@
 use crate::domain::Error::NotFound;
-use crate::domain::{Res, ValidName};
+use crate::domain::{MissionResponse, Res, ValidName};
 use anyhow::Context;
 use axum::Json;
 use axum::extract::{Path, State};
@@ -61,4 +61,25 @@ pub async fn get_mission(
         Err(NotFound(format!("mission: {}", mission_name.as_ref()))),
         |record| Ok(Json(record.commands.0)),
     )
+}
+#[tracing::instrument(skip(pg_pool))]
+pub async fn list_missions(State(pg_pool): State<PgPool>) -> Res<Json<Vec<MissionResponse>>> {
+    let res = sqlx::query!(
+        r#"
+        SELECT name as "name: ValidName", commands as "commands: sqlx::types::Json<Vec<Command>>" FROM missions
+        "#,
+    )
+    .fetch_all(&pg_pool)
+    .instrument(info_span!("Fetch from db"))
+    .await
+    .context("Failed fetching missions from db")?;
+
+    Ok(Json(
+        res.into_iter()
+            .map(|res| MissionResponse {
+                name: res.name,
+                mission: res.commands.0,
+            })
+            .collect(),
+    ))
 }

@@ -1,3 +1,4 @@
+use crate::external::mission_service::MissionService;
 use crate::pages::free_flight::Msg::CommandSet;
 use crate::pages::free_flight::SetpointRecording;
 use crate::pages::home::ModeSelection;
@@ -10,6 +11,7 @@ use drone_control::{CommandUnit, Grid, Telemetry};
 use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub};
 use ratatui::Frame;
+use std::rc::Rc;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::{UnboundedReceiverStream, WatchStream};
 
@@ -65,13 +67,20 @@ pub enum NavigationMessage {
 pub struct Program<U: CommandUnit + 'static> {
     command_unit: &'static U,
     terminal_supports_enhancements: bool,
+    // needs to outlive the places it's shared to go into cmds - though not share between threads
+    mission_loader: Rc<dyn MissionService>,
 }
 
 impl<U: CommandUnit> Program<U> {
-    pub fn new(command_unit: &'static U, terminal_supports_enhancements: bool) -> Self {
+    pub fn new(
+        command_unit: &'static U,
+        terminal_supports_enhancements: bool,
+        loader: Rc<dyn MissionService>,
+    ) -> Self {
         Self {
             command_unit,
             terminal_supports_enhancements,
+            mission_loader: loader,
         }
     }
 }
@@ -175,7 +184,8 @@ impl<U: CommandUnit> Ratatea for Program<U> {
             }
             (State::MissionSelect(select_state), Msg::MissionSelect(msg)) => {
                 let next_cmd =
-                    mission_select::update(select_state, msg).lift_msg(Msg::MissionSelect);
+                    mission_select::update(select_state, msg, self.mission_loader.clone())
+                        .lift_msg(Msg::MissionSelect);
                 (model, next_cmd)
             }
             (State::MissionExecution(state), Msg::MissionExecution(msg)) => {

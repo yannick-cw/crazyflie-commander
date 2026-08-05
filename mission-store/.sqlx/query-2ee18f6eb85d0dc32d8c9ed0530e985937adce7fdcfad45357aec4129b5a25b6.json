@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT name as \"name: ValidName\", commands as \"commands: sqlx::types::Json<Vec<Command>>\" FROM missions\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name: ValidName",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "missions",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "commands: sqlx::types::Json<Vec<Command>>",
+        "type_info": "Json",
+        "origin": {
+          "Table": {
+            "table": "missions",
+            "name": "commands"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "2ee18f6eb85d0dc32d8c9ed0530e985937adce7fdcfad45357aec4129b5a25b6"
+}

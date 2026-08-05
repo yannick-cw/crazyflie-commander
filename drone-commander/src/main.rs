@@ -1,19 +1,30 @@
+use crate::config::{Location, get_config};
 use crate::dev_unit::DevUnit;
+use crate::external::mission_service::{FileMission, HttpMission, MissionService};
 use crate::program::Program;
 use crossterm::terminal;
 use drone_control::setup_link;
 use ratatea::run;
+use std::path::Path;
+use std::rc::Rc;
 use tracing::info;
 
+mod config;
 mod dev_unit;
+mod external;
 mod pages;
 mod program;
+#[cfg(test)]
+mod test_support;
 mod view;
 
 #[tokio::main]
 // color_eyre:Result<()> is the alternative to the std lib `Box<dyn Error + Send + Sync + 'static>` case
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
+
+    let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("config");
+    let config = get_config(&config_path)?;
 
     let file_appender = tracing_appender::rolling::never("./logs", "commander.log");
     tracing_subscriber::fmt()
@@ -22,6 +33,15 @@ async fn main() -> color_eyre::Result<()> {
         .init();
     let terminal_supports_enhancements = terminal::supports_keyboard_enhancement()?;
 
+    let mission_loader: Rc<dyn MissionService> = match config.mission_store.location {
+        Location::Local => Rc::new(FileMission {
+            file_path: "missions".to_string(),
+        }),
+        Location::Remote => Rc::new(HttpMission {
+            url: config.mission_store.url,
+        }),
+    };
+
     info!("Starting up....");
     match setup_link().await {
         Ok(real_unit) => {
@@ -29,13 +49,13 @@ async fn main() -> color_eyre::Result<()> {
             // this needs to live for the whole program
             let command_unit: &'static _ = Box::leak(Box::new(real_unit));
 
-            let p = Program::new(command_unit, terminal_supports_enhancements);
+            let p = Program::new(command_unit, terminal_supports_enhancements, mission_loader);
             run(p).await?;
         }
         _ => {
             // fallback for dev
             let command_unit = &DevUnit;
-            let p = Program::new(command_unit, terminal_supports_enhancements);
+            let p = Program::new(command_unit, terminal_supports_enhancements, mission_loader);
             run(p).await?;
         }
     };
@@ -91,7 +111,10 @@ async fn main() -> color_eyre::Result<()> {
 //   - no spin, just collecting when flying slowly
 // - [x] post mission stops telemetry? - more like when battery abort telemetry stops changing? -- fixed by borrow bug
 // ---- NEXT
+// - [ ] use local backend + postgres (optionally) for missions
 // --- NEXT
+// - [ ] use local backend + postgres (optionally) for recordings
+// - [ ] use local backend + postgres (optionally) for storing flights
 // - [ ] webserver path: TUI stores no json missions, server does, can /post missions, /get missions and execute, /post mission results (grid + telemetry?), /post replays as missions
 //       maybe serve a web page rendering a mission executed log + the grid created for that, /get grid for room id, auth for endpoints and page (bearer tkn - login form)!
 // - [ ] new Command: Auto explore room and map it out?

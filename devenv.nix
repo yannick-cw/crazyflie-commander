@@ -85,6 +85,7 @@ in
   tasks."db:migrate" = {
     exec = "sqlx migrate run";
     after = [ "devenv:processes:postgres" ];
+    showOutput = true;
   };
 
   # so we always have a fresh state - means no missions locally for now
@@ -94,6 +95,15 @@ in
       rm -rf .devenv/test-state/postgres
     '';
     before = [ "devenv:processes:postgres" ];
+
+  };
+
+  # populate base missions
+  tasks."backed:missions" = {
+    exec = ''
+      ./scripts/upload-missions.sh
+    '';
+    after = [ "devenv:processes:backend" ];
 
   };
 
@@ -119,7 +129,14 @@ in
   processes = lib.optionalAttrs (!config.devenv.isTesting) {
     backend = {
       exec = "cd mission-store && cargo watch -x run";
-      after = [ "devenv:processes:postgres" ];
+      after = [ "db:migrate" ];
+      ready = {
+        http.get = {
+          port = 8000;
+          path = "/health_check";
+        };
+
+      };
     };
   };
 }

@@ -3,3 +3,6 @@ GET localhost:8000/health_check
 
 ### GET mission
 GET localhost:8000/missions/any
+
+### test
+GET http://127.0.0.1:8000/missions

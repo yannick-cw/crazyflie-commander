@@ -12,3 +12,4 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+strict_ports: true
