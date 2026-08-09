@@ -40,7 +40,6 @@ pub async fn run(pg_pool: PgPool, listener: tokio::net::TcpListener) -> Result<(
         }));
 
     let app = Router::new()
-        .route("/health_check", get(health_check))
         .route(
             "/missions/{mission_name}",
             post(post_mission).get(get_mission),
@@ -50,6 +49,7 @@ pub async fn run(pg_pool: PgPool, listener: tokio::net::TcpListener) -> Result<(
         // everything above is authed
         .layer(from_fn_with_state(pg_pool.clone(), auth_middleware))
         // not authed
+        .route("/health_check", get(health_check))
         .route("/admin/tokens/{label}/revoke", post(revoke_token))
         .route("/admin/tokens", post(create_token))
         .with_state(pg_pool)
@@ -58,6 +58,7 @@ pub async fn run(pg_pool: PgPool, listener: tokio::net::TcpListener) -> Result<(
     axum::serve(listener, app).await
 }
 
+#[tracing::instrument(skip(pg_pool, token, request, next))]
 async fn auth_middleware(
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     State(pg_pool): State<PgPool>,

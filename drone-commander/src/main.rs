@@ -1,4 +1,4 @@
-use crate::config::{Location, get_config};
+use crate::config::{MissionStoreSettings, get_config};
 use crate::dev_unit::DevUnit;
 use crate::external::mission_service::{FileMission, HttpMission, MissionService};
 use crate::program::Program;
@@ -33,12 +33,13 @@ async fn main() -> color_eyre::Result<()> {
         .init();
     let terminal_supports_enhancements = terminal::supports_keyboard_enhancement()?;
 
-    let mission_loader: Rc<dyn MissionService> = match config.mission_store.location {
-        Location::Local => Rc::new(FileMission {
-            file_path: "missions".to_string(),
+    let mission_loader: Rc<dyn MissionService> = match config.mission_store {
+        MissionStoreSettings::Local(settings) => Rc::new(FileMission {
+            file_path: settings.file_path,
         }),
-        Location::Remote => Rc::new(HttpMission {
-            url: config.mission_store.url,
+        MissionStoreSettings::Remote(settings) => Rc::new(HttpMission {
+            url: settings.url,
+            secret: settings.key,
         }),
     };
 

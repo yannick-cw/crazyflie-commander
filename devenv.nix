@@ -98,14 +98,20 @@ in
 
   };
 
-  # populate base missions
+  # populate base missions & creates a token
   tasks."backed:missions" = lib.optionalAttrs (!config.devenv.isTesting) {
     exec = ''
-      ./scripts/upload-missions.sh
+      token=$(./scripts/create-token.sh)
+      echo $token > tmp_tkn
+      ./scripts/upload-missions.sh $token
     '';
     after = [ "devenv:processes:backend" ];
-
+    showOutput = true;
   };
+
+  scripts.tui-remote.exec = ''
+    TUI_CONFIG_LOCATION=remote TUI_MISSION_STORE__REMOTE__KEY=$(./scripts/create-token.sh) cargo run --bin drone-commander
+  '';
 
   # needed for rust rover toolchain
   enterShell = ''

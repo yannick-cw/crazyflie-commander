@@ -28,6 +28,7 @@ pub struct MissionResponse {
 
 pub struct HttpMission {
     pub url: Url,
+    pub secret: String,
 }
 
 #[async_trait(?Send)]
@@ -37,7 +38,7 @@ impl MissionService for HttpMission {
 
         let http_res: color_eyre::Result<Vec<MissionResponse>> = async {
             let uri = self.url.clone().join("missions")?;
-            let res = client.get(uri).send().await?;
+            let res = client.get(uri).bearer_auth(&self.secret).send().await?;
             let json: Vec<MissionResponse> = res.json().await?;
             Ok(json)
         }
@@ -60,7 +61,12 @@ impl MissionService for HttpMission {
             let http_res: color_eyre::Result<StatusCode> = async {
                 let uri = self.url.clone().join("missions/")?.join(&name)?;
                 info!("{uri}");
-                let res = client.post(uri).json(&mission).send().await?;
+                let res = client
+                    .post(uri)
+                    .bearer_auth(&self.secret)
+                    .json(&mission)
+                    .send()
+                    .await?;
                 Ok(res.status())
             }
             .await;
@@ -181,7 +187,7 @@ fn recording_to_mission(recording: Vec<SetpointRecording>) -> Option<(String, Ve
 mod tests {
     use super::*;
     use crate::test_support::init_tracing;
-    use wiremock::matchers::{method, path, path_regex};
+    use wiremock::matchers::{bearer_token, method, path, path_regex};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
@@ -193,8 +199,10 @@ mod tests {
         }];
 
         let mock_server = MockServer::start().await;
+        let token = "test_secret";
         Mock::given(method("GET"))
             .and(path("/missions"))
+            .and(bearer_token(token))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(vec![MissionResponse {
                     name: "test_mission".to_string(),
@@ -207,6 +215,7 @@ mod tests {
 
         let http = HttpMission {
             url: mock_server.uri().parse().unwrap(),
+            secret: token.to_string(),
         };
 
         let missions = http.list_missions().await;
@@ -225,8 +234,10 @@ mod tests {
         }];
 
         let mock_server = MockServer::start().await;
+        let token = "test_secret";
         Mock::given(method("POST"))
             .and(path_regex(r"^/missions/.+$"))
+            .and(bearer_token(token))
             .respond_with(ResponseTemplate::new(201))
             .expect(1)
             .mount(&mock_server)
@@ -234,6 +245,7 @@ mod tests {
 
         let http = HttpMission {
             url: mock_server.uri().parse().unwrap(),
+            secret: token.to_string(),
         };
 
         http.store_recoding(test_recording).await;

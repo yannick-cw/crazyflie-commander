@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-#   ./scripts/upload-missions.sh [base-url]
+# Upload the base missions to the local backend.
+#   ./scripts/upload-missions.sh <token>
 
 set -euo pipefail
 
-BASE_URL="${1:-${MISSION_STORE_URL:-http://127.0.0.1:8000}}"
-MISSIONS_DIR="$(dirname "$0")/../drone-commander/missions"
+TOKEN="$1"
 
 # Percent-encode a single path segment; mission names contain spaces.
 urlencode() {
@@ -19,16 +19,13 @@ urlencode() {
   printf '%s' "$out"
 }
 
-failed=0
-for file in "$MISSIONS_DIR"/*.json; do
+for file in "$(dirname "$0")"/../drone-commander/missions/*.json; do
   name="$(basename "$file" .json)"
   status="$(curl -sS -o /dev/null -w '%{http_code}' \
-    -X POST "$BASE_URL/missions/$(urlencode "$name")" \
+    -X POST "http://127.0.0.1:8000/missions/$(urlencode "$name")" \
     -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $TOKEN" \
     --data-binary "@$file")"
 
   printf '%-16s %s\n' "$status" "$name"
-  [[ "$status" == 2* ]] || failed=1
 done
-
-exit "$failed"

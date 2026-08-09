@@ -10,6 +10,7 @@ target/
 proptest-regressions/
 scala-rust-cheatsheet.md
 logs/
+tmp_tkn
 
 # Devenv
 .devenv*
