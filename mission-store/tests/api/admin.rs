@@ -1,4 +1,4 @@
-use crate::setup::{post, post_no_body, spawn_app};
+use crate::setup::{get, post, post_no_body, spawn_app};
 use reqwest::{Client, StatusCode};
 use serde_json::{Value, json};
 use std::error::Error;
@@ -77,6 +77,20 @@ async fn create_use_revoke_block_tocken() -> Result<(), Box<dyn Error>> {
         rejected_req,
         "Fetch should not be allowed"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn reject_un_authed_req() -> Result<(), Box<dyn Error>> {
+    let (endpoint, _) = spawn_app().await?;
+    let client = Client::new();
+
+    let unauthorized = get(format!("{endpoint}/missions/some_mission"), &client)
+        .await?
+        .status();
+
+    assert_eq!(StatusCode::UNAUTHORIZED, unauthorized);
 
     Ok(())
 }

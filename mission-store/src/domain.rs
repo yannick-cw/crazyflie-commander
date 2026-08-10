@@ -66,6 +66,8 @@ pub struct Flight {
 pub enum Error {
     #[error("{0}")]
     ValidationError(String),
+    #[error("Missing Bearer Token")]
+    Unauthorized,
     #[error("Did not find: {0}")]
     NotFound(String),
     #[error(transparent)]
@@ -84,6 +86,9 @@ impl IntoResponse for Error {
             Error::UnexpectedError(_) => {
                 error!("{:#}", self);
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+            Error::Unauthorized => {
+                (StatusCode::UNAUTHORIZED, "Missing Bearer Token").into_response()
             }
         }
     }

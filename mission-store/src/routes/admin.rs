@@ -41,7 +41,7 @@ pub async fn create_token(
 
     sqlx::query!(r#"DELETE FROM tokens where label = $1"#, tkn_req.label)
         .execute(&mut *tx)
-        .instrument(info_span!("INSERT token to db"))
+        .instrument(info_span!("DELETE old token to db"))
         .await
         .context("Failed deletion")?;
 
