@@ -1,9 +1,11 @@
 use crate::missions::simple_mission;
 use crate::setup::{get, post, spawn_app};
 use drone_control::Telemetry;
-use reqwest::StatusCode;
+use reqwest::{StatusCode, header};
 use serde_json::{Value, json};
 use std::error::Error;
+use tokio::join;
+use uuid::Uuid;
 
 fn test_telemetry() -> Vec<Telemetry> {
     vec![
@@ -52,25 +54,97 @@ async fn duplicate_upload_409() -> Result<(), Box<dyn Error>> {
     let json_flight = json!({
         "date": "2026-08-04T08:23:42.508923Z",
         "telemetry": test_telemetry(),
-        "mission_id": None::<String>
     });
 
-    let created = post(
-        format!("{endpoint}/flights/test_flight"),
-        &client,
-        &json_flight,
-    )
-    .await?;
+    let insert = || {
+        post(
+            format!("{endpoint}/flights/test_flight"),
+            &client,
+            &json_flight,
+        )
+    };
 
-    let conflict = post(
-        format!("{endpoint}/flights/test_flight"),
-        &client,
-        &json_flight,
-    )
-    .await?;
+    let created = insert().await?;
+    let conflict = insert().await?;
 
     assert_eq!(StatusCode::CREATED, created.status());
     assert_eq!(StatusCode::CONFLICT, conflict.status());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicate_retry_is_idempotent() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+    let idempotency_key = Uuid::new_v4();
+    let json_flight = json!({
+        "date": "2026-08-04T08:23:42.508923Z",
+        "telemetry": test_telemetry(),
+    });
+
+    let insert = || {
+        client
+            .post(format!("{endpoint}/flights/test_flight"))
+            .header(
+                "Idempotency-Key",
+                header::HeaderValue::from_str(&idempotency_key.to_string()).unwrap(),
+            )
+            .json(&json_flight)
+            .send()
+    };
+
+    let created = insert().await?;
+    let idempotent_create = insert().await?;
+
+    assert_eq!(StatusCode::CREATED, created.status());
+    assert_eq!(StatusCode::CREATED, idempotent_create.status());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn duplicate_concurrent_retry_is_idempotent() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+    let idempotency_key = Uuid::new_v4();
+    let json_flight = json!({
+        "date": "2026-08-04T08:23:42.508923Z",
+        "telemetry": test_telemetry(),
+    });
+
+    let insert = || {
+        client
+            .post(format!("{endpoint}/flights/test_flight"))
+            .header(
+                "Idempotency-Key",
+                header::HeaderValue::from_str(&idempotency_key.to_string()).unwrap(),
+            )
+            .json(&json_flight)
+            .send()
+    };
+
+    let (created, idempotent_create) = join!(insert(), insert());
+
+    assert_eq!(StatusCode::CREATED, created?.status());
+    assert_eq!(StatusCode::CREATED, idempotent_create?.status());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn reject_broken_idem_key() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+
+    let created = client
+        .post(format!("{endpoint}/flights/test_flight"))
+        .header("Idempotency-Key", header::HeaderValue::from_str("")?)
+        .send()
+        .await?;
+
+    assert_eq!(StatusCode::BAD_REQUEST, created.status());
+    assert_eq!(
+        "invalid HTTP header (idempotency-key)",
+        created.text().await?
+    );
 
     Ok(())
 }

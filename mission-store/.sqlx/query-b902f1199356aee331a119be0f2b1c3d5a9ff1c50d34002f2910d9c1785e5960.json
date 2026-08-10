@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO flights (id, name, date, telemetry, mission)\n                VALUES ($1, $2, $3, $4, $5)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Json",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b902f1199356aee331a119be0f2b1c3d5a9ff1c50d34002f2910d9c1785e5960"
+}

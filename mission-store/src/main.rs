@@ -1,12 +1,13 @@
 use mission_store::config::get_config;
-use mission_store::run;
 use mission_store::telemetry::trace_subscriber;
+use mission_store::{run_cleanup_loop, run_server};
 use secrecy::ExposeSecret;
 use sqlx::PgPool;
 use std::error::Error;
 use std::path::Path;
-use tracing::info;
+use tokio::select;
 use tracing::subscriber::set_global_default;
+use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -23,15 +24,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
     let connection = PgPool::connect(&config.db.connection_string().expose_secret()).await?;
+    let worker_pool = PgPool::connect(&config.db.connection_string().expose_secret()).await?;
 
-    run(connection, listener).await?;
+    let cleanup_handle = tokio::spawn(run_cleanup_loop(worker_pool));
+    let server_handle = tokio::spawn(run_server(connection, listener));
+
+    let report_outcome = |o, name| match o {
+        Ok(Err(err)) => error!("Failed running task: {name} {err:?}"),
+        Err(err) => error!("Failed task: {name} {err:?}"),
+        Ok(_) => info!("Exited: {name}"),
+    };
+    select! {
+        res = cleanup_handle => report_outcome(res, "cleanup"),
+        res = server_handle => report_outcome(res, "server"),
+    };
     Ok(())
 }
 
-// - [ ] webserver path: TUI stores no json missions, server does, can /post missions, /get missions and execute, /post mission results (grid + telemetry?), /post replays as missions
+// - [x] background worker tasks to clean up old idempotency keys
+// - [x] webserver path: TUI stores no json missions, server does, can /post missions, /get missions and execute, /post mission results (grid + telemetry?), /post replays as missions
 //       maybe serve a web page rendering a mission executed log + the grid created for that, /get grid for room id, auth for endpoints and page (bearer tkn - login form)!
-
-// - [ ] POST /missions to store a mission (mission name + json; date?)
-// - [ ] POST /flight to store a flight with (telemetry) with an optional mission id
+// - [x] POST /missions to store a mission (mission name + json; date?)
+// - [x] POST /flight to store a flight with (telemetry) with an optional mission id
 // - [ ] validate a to be stored mission
-// - [ ] auth the POST /mission endpoint (cookie, client facing)
+// - [x] auth the POST /mission endpoint (cookie, client facing)

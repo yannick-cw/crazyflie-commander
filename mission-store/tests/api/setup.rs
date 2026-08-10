@@ -11,6 +11,11 @@ use tracing::subscriber::set_global_default;
 use uuid::Uuid;
 
 pub async fn spawn_app() -> Result<(String, Client), Box<dyn Error>> {
+    let (endpoint, authed_client, _) = spawn_app_pg().await?;
+    Ok((endpoint, authed_client))
+}
+
+pub async fn spawn_app_pg() -> Result<(String, Client, PgPool), Box<dyn Error>> {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         set_global_default(trace_subscriber("info", false)).expect("Could not set subscriber")
@@ -28,12 +33,13 @@ pub async fn spawn_app() -> Result<(String, Client), Box<dyn Error>> {
         .execute(&mut connection)
         .await?;
 
-    let pg_pool = PgPool::connect(&config.db.connection_string().expose_secret()).await?;
-    sqlx::migrate!("../migrations").run(&pg_pool).await?;
+    let pg_pool1 = PgPool::connect(&config.db.connection_string().expose_secret()).await?;
+    sqlx::migrate!("../migrations").run(&pg_pool1).await?;
+    let pg_pool = pg_pool1;
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
-    tokio::spawn(mission_store::run(pg_pool, listener));
+    tokio::spawn(mission_store::run_server(pg_pool.clone(), listener));
 
     let endpoint = format!("http://127.0.0.1:{}", port);
     let no_auth_client = Client::new();
@@ -54,7 +60,7 @@ pub async fn spawn_app() -> Result<(String, Client), Box<dyn Error>> {
     );
     let authed_client = Client::builder().default_headers(headers).build()?;
 
-    Ok((endpoint, authed_client))
+    Ok((endpoint, authed_client, pg_pool))
 }
 
 pub async fn post(

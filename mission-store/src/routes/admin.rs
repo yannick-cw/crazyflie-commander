@@ -32,38 +32,25 @@ pub async fn create_token(
     let raw_token_bytes: [u8; 32] = rand::random();
     let base64_token = BASE64_STANDARD.encode(raw_token_bytes);
     let token_hash = sha2::Sha256::digest(&base64_token).0;
-
-    // transaction to delete and insert
-    let mut tx = pg_pool
-        .begin()
-        .await
-        .context("could not start transaction")?;
-
-    sqlx::query!(r#"DELETE FROM tokens where label = $1"#, tkn_req.label)
-        .execute(&mut *tx)
-        .instrument(info_span!("DELETE old token to db"))
-        .await
-        .context("Failed deletion")?;
-
     sqlx::query!(
         r#"
         INSERT INTO tokens (id, label, token_hash, created_at)
         VALUES ($1, $2, $3, $4)
+        ON CONFLICT (label)
+        do update set token_hash = $3, created_at = $4
         "#,
         Uuid::new_v4(),
         tkn_req.label,
         &token_hash,
         Utc::now()
     )
-    .execute(&mut *tx)
+    .execute(&pg_pool)
     .instrument(info_span!("INSERT token to db"))
     .await
     .context(format!(
         "Failed to insert token for label {} to db",
         tkn_req.label
     ))?;
-
-    tx.commit().await.context("could not commit transaction")?;
 
     info!("New token created");
     Ok((

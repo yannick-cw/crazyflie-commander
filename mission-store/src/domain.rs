@@ -61,6 +61,8 @@ pub struct Flight {
     pub telemetry: Vec<Telemetry>,
     pub mission: Option<ValidName>,
 }
+#[derive(Clone, Debug)]
+pub struct Label(pub String);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -1,34 +1,77 @@
 use crate::domain::Error::{Conflict, NotFound, UnexpectedError, ValidationError};
-use crate::domain::{Flight, Res, ValidName};
+use crate::domain::{Flight, Label, Res, ValidName};
+use crate::idempotency::{IdempotencyKey, try_processing, update_idempotent_response};
 use anyhow::Context;
-use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::{Extension, Json};
+use axum_extra::TypedHeader;
 use drone_control::Telemetry;
-use sqlx::PgPool;
 use sqlx::error::ErrorKind::ForeignKeyViolation;
 use sqlx::types::Uuid;
+use sqlx::{PgPool, PgTransaction};
 use tracing::{Instrument, info, info_span};
 
-#[tracing::instrument(skip(pg_pool, flight))]
+#[tracing::instrument(skip(pg_pool, flight, maybe_idem))]
 pub async fn post_flight(
     Path(flight_name): Path<ValidName>,
+    label: Extension<Label>,
+    maybe_idem: Option<TypedHeader<IdempotencyKey>>,
     State(pg_pool): State<PgPool>,
     Json(flight): Json<Flight>,
-) -> Res<StatusCode> {
+) -> Res<Response> {
+    let mut transaction = pg_pool
+        .begin()
+        .await
+        .context("could not init transaction")?;
+
+    let res = match maybe_idem {
+        None => insert_flight(&flight_name, &mut transaction, flight).await,
+        Some(idem) => {
+            match try_processing(&mut transaction, &flight_name, &idem.0, &label.0).await? {
+                None => {
+                    let response = insert_flight(&flight_name, &mut transaction, flight).await?;
+                    update_idempotent_response(
+                        &mut transaction,
+                        &flight_name,
+                        &idem.0,
+                        &label.0,
+                        response,
+                    )
+                    .await
+                }
+                // this is a retry - return response from DB
+                Some(res) => Ok(res),
+            }
+        }
+    }?;
+
+    transaction
+        .commit()
+        .await
+        .context("could not commit transaction")?;
+    Ok(res)
+}
+
+async fn insert_flight(
+    flight_name: &ValidName,
+    pool: &mut PgTransaction<'_>,
+    flight: Flight,
+) -> Res<Response> {
     let tele_json = serde_json::to_value(flight.telemetry).unwrap();
     let insert_res = sqlx::query!(
         r#"
-        INSERT INTO flights (id, name, date, telemetry, mission)
-        VALUES ($1, $2, $3, $4, $5)
-        "#,
+                INSERT INTO flights (id, name, date, telemetry, mission)
+                VALUES ($1, $2, $3, $4, $5)
+                "#,
         Uuid::new_v4(),
         flight_name.as_ref(),
         flight.date,
         tele_json,
         flight.mission.as_ref().map(|a| a.as_ref())
     )
-    .execute(&pg_pool)
+    .execute(&mut **pool)
     .instrument(info_span!("INSERT to db"))
     .await;
 
@@ -48,7 +91,7 @@ pub async fn post_flight(
     })?;
 
     info!("New flight saved");
-    Ok(StatusCode::CREATED)
+    Ok(StatusCode::CREATED.into_response())
 }
 
 #[tracing::instrument(skip(pg_pool))]

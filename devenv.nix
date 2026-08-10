@@ -47,7 +47,7 @@ in
     DATABASE_URL = "postgres://${db.user}:${db.pass}@localhost:${toString pgPort}/${db.name}";
     # prevents always needing running postgress when working, as database url above is present
     # and overwrites using /.sqlx cache
-    SQLX_OFFLINE = "true";
+    # SQLX_OFFLINE = "true"; now supplied only for hooks
     APP_DB_PASSWD = "${db.pass}";
   };
 
@@ -80,33 +80,39 @@ in
   };
   dotenv.disableHint = true; # I just write to it and dont read it here
 
-  # run with devenv tasks db:migrate - also auto runs when backend is started and when `devenv test` is run
-  # @ready needs to be reached for postgres for this to run
-  tasks."db:migrate" = {
-    exec = "sqlx migrate run";
-    after = [ "devenv:processes:postgres" ];
-    showOutput = true;
-  };
+  tasks = {
 
-  # so we always have a fresh state - means no missions locally for now
-  tasks."app:cleanup" = {
-    exec = ''
-      rm -rf .devenv/state/postgres
-      rm -rf .devenv/test-state/postgres
-    '';
-    before = [ "devenv:processes:postgres" ];
+    # run with devenv tasks db:migrate - also auto runs when backend is started and when `devenv test` is run
+    # @ready needs to be reached for postgres for this to run
+    "db:migrate" = {
+      exec = "sqlx migrate run";
+      after = [ "devenv:processes:postgres" ];
+      showOutput = true;
+    };
 
-  };
+    # so we always have a fresh state - means no missions locally for now
+    "app:cleanup" = {
+      exec = ''
+        rm -rf .devenv/state/postgres
+        rm -rf .devenv/test-state/postgres
+      '';
+      before = [ "devenv:processes:postgres" ];
 
-  # populate base missions & creates a token
-  tasks."backed:missions" = lib.optionalAttrs (!config.devenv.isTesting) {
-    exec = ''
-      token=$(./scripts/create-token.sh)
-      echo $token > tmp_tkn
-      ./scripts/upload-missions.sh $token
-    '';
-    after = [ "devenv:processes:backend" ];
-    showOutput = true;
+    };
+
+    # populate base missions & creates a token
+    "backed:missions" = lib.optionalAttrs (!config.devenv.isTesting) {
+      exec = ''
+        token=$(./scripts/create-token.sh)
+        echo $token > tmp_tkn
+        ./scripts/upload-missions.sh $token
+      '';
+      after = [ "devenv:processes:backend" ];
+      showOutput = true;
+    };
+
+    "devenv:git-hooks:run".env.SQLX_OFFLINE = "true";
+
   };
 
   scripts.tui-remote.exec = ''
