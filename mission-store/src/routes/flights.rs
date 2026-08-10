@@ -1,4 +1,4 @@
-use crate::domain::Error::{NotFound, UnexpectedError, ValidationError};
+use crate::domain::Error::{Conflict, NotFound, UnexpectedError, ValidationError};
 use crate::domain::{Flight, Res, ValidName};
 use anyhow::Context;
 use axum::Json;
@@ -38,6 +38,11 @@ pub async fn post_flight(
                 "Referenced mission `{}` does not exist",
                 flight.mission.as_deref().unwrap_or("")
             ))
+        }
+        sqlx::Error::Database(db_err)
+            if db_err.is_unique_violation() && db_err.constraint() == Some("flights_name_key") =>
+        {
+            Conflict(format!("flight name `{}` exists.", flight_name.as_ref()))
         }
         err => UnexpectedError(anyhow::Error::new(err).context("Failed inserting flight into db.")),
     })?;

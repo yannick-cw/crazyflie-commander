@@ -31,6 +31,32 @@ async fn submit_mission() -> Result<(), Box<dyn Error>> {
 }
 
 #[tokio::test]
+async fn get_409_conflict_on_double_submit() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+
+    let json_mission: Value = serde_json::from_str(simple_mission())?;
+
+    let create = post(
+        format!("{endpoint}/missions/test_mission"),
+        &client,
+        &json_mission,
+    )
+    .await?;
+
+    let conflict = post(
+        format!("{endpoint}/missions/test_mission"),
+        &client,
+        &json_mission,
+    )
+    .await?;
+
+    assert_eq!(StatusCode::CREATED, create.status());
+    assert_eq!(StatusCode::CONFLICT, conflict.status());
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn retrieve_mission() -> Result<(), Box<dyn Error>> {
     let (endpoint, client) = spawn_app().await?;
 

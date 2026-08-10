@@ -47,6 +47,35 @@ async fn upload_flight() -> Result<(), Box<dyn Error>> {
 }
 
 #[tokio::test]
+async fn duplicate_upload_409() -> Result<(), Box<dyn Error>> {
+    let (endpoint, client) = spawn_app().await?;
+    let json_flight = json!({
+        "date": "2026-08-04T08:23:42.508923Z",
+        "telemetry": test_telemetry(),
+        "mission_id": None::<String>
+    });
+
+    let created = post(
+        format!("{endpoint}/flights/test_flight"),
+        &client,
+        &json_flight,
+    )
+    .await?;
+
+    let conflict = post(
+        format!("{endpoint}/flights/test_flight"),
+        &client,
+        &json_flight,
+    )
+    .await?;
+
+    assert_eq!(StatusCode::CREATED, created.status());
+    assert_eq!(StatusCode::CONFLICT, conflict.status());
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn upload_flight_with_mission() -> Result<(), Box<dyn Error>> {
     let (endpoint, client) = spawn_app().await?;
 

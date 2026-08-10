@@ -66,6 +66,8 @@ pub struct Flight {
 pub enum Error {
     #[error("{0}")]
     ValidationError(String),
+    #[error("{0}")]
+    Conflict(String),
     #[error("Missing Bearer Token")]
     Unauthorized,
     #[error("Did not find: {0}")]
@@ -89,6 +91,10 @@ impl IntoResponse for Error {
             }
             Error::Unauthorized => {
                 (StatusCode::UNAUTHORIZED, "Missing Bearer Token").into_response()
+            }
+            Error::Conflict(conf) => {
+                warn!("Conflict inserting to DB - {:#}", conf);
+                (StatusCode::CONFLICT, conf).into_response()
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::domain::Error::NotFound;
+use crate::domain::Error::{Conflict, NotFound, UnexpectedError};
 use crate::domain::{MissionResponse, Res, ValidName};
 use anyhow::Context;
 use axum::Json;
@@ -18,7 +18,7 @@ pub async fn post_mission(
 ) -> Res<StatusCode> {
     let mission_json = serde_json::to_value(mission).unwrap();
 
-    sqlx::query!(
+    let insert_res = sqlx::query!(
         r#"
         INSERT INTO missions (id, name, commands, created_at)
         VALUES ($1, $2, $3, $4)
@@ -30,11 +30,19 @@ pub async fn post_mission(
     )
     .execute(&pg_pool)
     .instrument(info_span!("INSERT to db"))
-    .await
-    .context(format!(
-        "Failed to insert mission {} to db",
-        mission_name.as_ref()
-    ))?;
+    .await;
+
+    insert_res.map_err(|err| match err {
+        sqlx::Error::Database(db_err)
+            if db_err.is_unique_violation() && db_err.constraint() == Some("missions_name_key") =>
+        {
+            Conflict(format!("mission name `{}` exists.", mission_name.as_ref()))
+        }
+        err => UnexpectedError(anyhow::Error::new(err).context(format!(
+            "Failed inserting mission {} into db.",
+            mission_name.as_ref()
+        ))),
+    })?;
 
     info!("New mission saved");
     Ok(StatusCode::CREATED)
