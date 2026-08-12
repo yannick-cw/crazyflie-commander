@@ -116,7 +116,7 @@ in
   };
 
   scripts.tui-remote.exec = ''
-    TUI_CONFIG_LOCATION=remote TUI_MISSION_STORE__REMOTE__KEY=$(./scripts/create-token.sh) cargo run --bin drone-commander
+    TUI_CONFIG_LOCATION=remote TUI_MISSION_STORE__REMOTE__KEY=$(./scripts/create-token.sh) cargo run --bin gcs
   '';
 
   # needed for rust rover toolchain

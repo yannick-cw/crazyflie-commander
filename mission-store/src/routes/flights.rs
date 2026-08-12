@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use axum_extra::TypedHeader;
-use drone_control::Telemetry;
+use mission_computer::Telemetry;
 use sqlx::error::ErrorKind::ForeignKeyViolation;
 use sqlx::types::Uuid;
 use sqlx::{PgPool, PgTransaction};

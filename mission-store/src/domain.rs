@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use drone_control::{Command, Telemetry};
+use mission_computer::{MissionItem, Telemetry};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use tracing::{error, warn};
@@ -9,7 +9,7 @@ use tracing::{error, warn};
 #[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct MissionResponse {
     pub name: ValidName,
-    pub mission: Vec<Command>,
+    pub mission: Vec<MissionItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Deserialize, Serialize, sqlx::Type)]

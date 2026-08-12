@@ -1,6 +1,6 @@
 claude.md
-drone-commander/missions/recordings/
-curriculum.md
+gcs/missions/recordings/
+curriculum-datalink.md
 curriculum-swarm.md
 .direnv/
 .env

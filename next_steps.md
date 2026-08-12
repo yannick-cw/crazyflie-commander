@@ -46,7 +46,7 @@
 
 ## 5. Split control + TUI into two processes over MQTT
 
-- drone-control service (owns radio + lib) and TUI client, talking over a broker
+- mission-computer service (owns radio + lib) and TUI client, talking over a broker
 - shared **protocol crate**: wire messages (`Telemetry`, `Progress`, `Command`, `Abort`)
 - MQTT adapter bridges the lib's in-process channels <-> topics; TUI swaps its receiver/sender to MQTT-backed
 - broker-loss handling: reconnect, buffer, last-will (dead-service detection)

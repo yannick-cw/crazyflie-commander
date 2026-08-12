@@ -1,0 +1,372 @@
+use crate::control::command_unit::{
+    Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, SetpointHover,
+    Telemetry, TrajectoryId, Waypoint,
+};
+use crate::control::patterns::billiard_box::run_billiard_loop;
+use crate::control::patterns::orbit::run_orbit;
+use crate::control::patterns::setpoints::run_setpoints;
+use crate::control::patterns::smooth_path::run_smooth_path;
+use crate::control::trajectory::orbit_trajectory::orbit_to_trajectory;
+use crate::control::trajectory::setpoint_trajectory::waypoints_to_trajectory;
+use crate::control::vehicle::Vehicle;
+use crate::occupancy::grid::{OccupancyGrid, update_grid};
+use crate::utils::errors::MissionError::FailedToConnect;
+use crate::utils::errors::Res;
+use crate::{Meters, MetersPerSecond, Progress, Reason};
+use crazyflie_lib::Crazyflie;
+use crazyflie_lib::subsystems::log::LogPeriod;
+use futures::{Stream, StreamExt, TryFutureExt};
+use std::time::Duration;
+use tokio::sync::{broadcast, watch};
+use tokio::time::{MissedTickBehavior, sleep};
+use tokio::{select, time};
+use tracing::info;
+
+pub const RANGE_FRONT: &str = "range.front";
+pub const RANGE_BACK: &str = "range.back";
+pub const RANGE_LEFT: &str = "range.left";
+pub const RANGE_RIGHT: &str = "range.right";
+pub const RANGE_UP: &str = "range.up";
+pub const PM_STATE: &str = "pm.state";
+pub const STATE_ESTIMATE_X: &str = "stateEstimate.x";
+pub const STATE_ESTIMATE_Y: &str = "stateEstimate.y";
+pub const STATE_ESTIMATE_Z: &str = "stateEstimate.z";
+pub const STATE_ESTIMATE_VX: &str = "stateEstimate.vx";
+pub const STATE_ESTIMATE_VY: &str = "stateEstimate.vy";
+pub const STATE_ESTIMATE_YAW: &str = "stateEstimate.yaw";
+
+/// Scan the radio for a Crazyflie, connect, reset its state estimate, and start telemetry logging.
+///
+/// Returns a [`CrazyPilot`] ready to fly.
+///
+/// # Errors
+/// Fails if no drone is found or the connection or logging setup fails.
+pub async fn setup_link() -> Res<CrazyPilot> {
+    let link_context = crazyflie_link::LinkContext::new();
+    let found = link_context.scan([0xE7; 5]).await?;
+
+    let uri = found
+        .first()
+        .ok_or(FailedToConnect("Did not find crazyflie".to_string()))?;
+
+    let cf = Crazyflie::connect_from_uri(&link_context, uri, crazyflie_lib::NoTocCache).await?;
+
+    // Reset the x,y,z,yaw estimated values before a new flight
+    cf.param.set_lossy("kalman.resetEstimation", 1.0).await?;
+    sleep(Duration::from_millis(50)).await;
+    cf.param.set_lossy("kalman.resetEstimation", 0.0).await?;
+
+    let mut log_block_telemetry = cf.log.create_block().await?;
+    let mut log_block_range_bat = cf.log.create_block().await?;
+
+    let range_bat_logs = [
+        RANGE_FRONT,
+        RANGE_BACK,
+        RANGE_LEFT,
+        RANGE_RIGHT,
+        RANGE_UP,
+        PM_STATE,
+    ];
+
+    let state_estimate_logs = [
+        STATE_ESTIMATE_X,
+        STATE_ESTIMATE_Y,
+        STATE_ESTIMATE_Z,
+        STATE_ESTIMATE_VX,
+        STATE_ESTIMATE_VY,
+        STATE_ESTIMATE_YAW,
+    ];
+
+    for var_name in state_estimate_logs {
+        log_block_telemetry.add_variable(var_name).await?;
+    }
+
+    for var_name in range_bat_logs {
+        log_block_range_bat.add_variable(var_name).await?;
+    }
+
+    let log_stream_telemetry = log_block_telemetry
+        .start(LogPeriod::from_millis(10).unwrap())
+        .await?;
+
+    let log_stream_range_bat = log_block_range_bat
+        .start(LogPeriod::from_millis(10).unwrap())
+        .await?;
+
+    let (tx, _rx) = broadcast::channel(64);
+    let (sender_tx, r) = watch::channel(Telemetry::default());
+    let (sender_grid, _) = watch::channel(OccupancyGrid::new());
+    let local_sender_tx = tx.clone();
+    let local_watch_tx = sender_tx.clone();
+    let local_grid_sender = sender_grid.clone();
+
+    tokio::spawn(async move {
+        let mut ticks = time::interval(Duration::from_millis(50));
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut grid = OccupancyGrid::new();
+        loop {
+            ticks.tick().await;
+            let telemetry = *r.borrow();
+            update_grid(&mut grid, &telemetry);
+            let _ = local_grid_sender.send(grid.clone());
+        }
+    });
+    tokio::spawn(async move {
+        loop {
+            let (tele_block, battery_block) =
+                tokio::join!(log_stream_telemetry.next(), log_stream_range_bat.next());
+            match (tele_block, battery_block) {
+                (Ok(tele_log), Ok(bat_log)) => {
+                    let telemetry = Telemetry::from_log_data(&tele_log, &bat_log);
+                    let _ = local_sender_tx.send(telemetry);
+                    let _ = local_watch_tx.send(telemetry);
+                }
+                _ => break,
+            }
+        }
+    });
+    let (status_sender, _) = watch::channel(MissionStatus::Idle);
+    let mission_status = status_sender.clone();
+    Ok(CrazyPilot {
+        vehicle: Vehicle::new(cf, sender_tx.subscribe()),
+        telemetry_sender: tx,
+        telemetry_latest: sender_tx,
+        grid_latest: sender_grid,
+        mission_status,
+    })
+}
+
+/// A connected Crazyflie driving one drone over the radio link.
+///
+/// Created by [`setup_link`]; the [`Autopilot`] implementation is how you fly it.
+#[derive(Debug)]
+pub struct CrazyPilot {
+    vehicle: Vehicle,
+    telemetry_sender: broadcast::Sender<Telemetry>,
+    telemetry_latest: watch::Sender<Telemetry>,
+    grid_latest: watch::Sender<OccupancyGrid>,
+    mission_status: watch::Sender<MissionStatus>,
+}
+
+impl CrazyPilot {
+    // TODO upload should happen before takeoff!! Not in the air - clean up link mode
+    async fn start_mission(&self, mission: Vec<MissionItem>) -> Res<()> {
+        let vehicle = &self.vehicle;
+
+        let total_commands = mission.len();
+
+        for (i, command) in mission.into_iter().enumerate() {
+            self.mission_status
+                .send(MissionStatus::Running(Some(Progress {
+                    current_command: command.clone(),
+                    command_num: i,
+                    total_commands,
+                })))
+                .unwrap();
+
+            match command {
+                MissionItem::Takeoff { height, duration } => {
+                    info!("Take Off...");
+                    vehicle.take_off(height, duration).await?;
+                }
+                MissionItem::Move { x, y, z, duration } => {
+                    info!("Moving...");
+                    vehicle.go_to(x, y, z, 0.0, duration, true, false).await?;
+                }
+                MissionItem::MoveToWaypoint { x, y, z, duration } => {
+                    info!("Moving to point...");
+                    vehicle.go_to(x, y, z, 0.0, duration, false, false).await?;
+                }
+                MissionItem::Land { duration } => {
+                    info!("Landing...");
+                    vehicle.land(duration).await?;
+                }
+                MissionItem::Hover { duration } => sleep(duration).await,
+                MissionItem::BilliardBox(params) => run_billiard_loop(params, vehicle).await?,
+                MissionItem::SmoothPath {
+                    waypoints,
+                    speed,
+                    flight_mode,
+                } => run_smooth_path(waypoints, vehicle, speed, flight_mode).await?,
+                MissionItem::Setpoints { points } => run_setpoints(points, vehicle).await?,
+                MissionItem::Orbit {
+                    radius,
+                    orbital_period,
+                    orbits,
+                    z,
+                } => run_orbit(radius, orbital_period, orbits, z, vehicle).await?,
+                MissionItem::OnVehicleTrajectory { duration, id, .. } => {
+                    vehicle.run_trajectory(id, duration).await?
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn abort_mission(&self, abort: Abort) -> Res<()> {
+        match abort {
+            Abort::FlightTermination => {
+                info!("HARD STOP..");
+                self.vehicle.emergency_stop().await?;
+
+                self.mission_status
+                    .send(MissionStatus::Aborted(Reason::HardStop))
+                    .unwrap();
+
+                Ok(())
+            }
+            Abort::Land => {
+                info!("Abort Land..");
+                self.vehicle.return_home().await?;
+
+                self.mission_status
+                    .send(MissionStatus::Aborted(Reason::Landing))
+                    .unwrap();
+
+                Ok(())
+            }
+        }
+    }
+}
+
+impl Autopilot for CrazyPilot {
+    async fn run_mission(
+        &self,
+        mission: Vec<MissionItem>,
+        abort_signal: impl Future<Output = Option<Abort>>,
+    ) -> Res<()> {
+        let mut telemetry_rx = self.vehicle.telemetry.clone();
+        let is_low_bat = telemetry_rx.wait_for(Telemetry::is_low_bat).map_ok(|_| ());
+
+        // runs mission or aborts on keypress or on low battery
+        select! {
+            mission = self.start_mission(mission) => {
+                info!("Mission complete");
+                self.mission_status
+                    .send(MissionStatus::Idle)
+                    .unwrap();
+                mission?
+            }
+            Some(abort) = abort_signal => {
+                self.abort_mission(abort).await?
+            }
+            _ = is_low_bat=> {
+                info!("Low battery - returning home");
+                self.vehicle.return_home().await?;
+
+                self.mission_status
+                    .send(MissionStatus::Aborted(Reason::Landing))
+                    .unwrap();
+            }
+        }
+        Ok(())
+    }
+
+    async fn upload_orbit(
+        &self,
+        radius: Meters,
+        orbital_period: Duration,
+        orbits: usize,
+        z: Meters,
+    ) -> Res<(TrajectoryId, Duration)> {
+        let c = orbit_to_trajectory(radius, orbital_period, orbits, z)?;
+        let id = self.vehicle.upload_compressed_trajectory(&c).await?;
+        Ok((id, c.duration))
+    }
+
+    async fn upload_smooth_path(
+        &self,
+        waypoints: Vec<Waypoint>,
+        speed: MetersPerSecond,
+        flight_mode: FlightMode,
+    ) -> Res<(TrajectoryId, Duration)> {
+        let t = waypoints_to_trajectory(waypoints, speed, flight_mode)?;
+        let id = self.vehicle.upload_trajectory(&t).await?;
+        Ok((id, t.duration))
+    }
+
+    async fn fly(&self, commands: impl Stream<Item = ManualControl>) -> Res<()> {
+        tokio::pin!(commands);
+
+        let mut telemetry_rx = self.vehicle.telemetry.clone();
+        let too_close_rx = self.vehicle.telemetry.clone();
+        let mut ticks = time::interval(Duration::from_millis(20));
+        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut last_setpoint: Option<SetpointHover> = None;
+
+        loop {
+            select! {
+                // in case we do not have something new from the stream
+                // we repeat the last setpoint motion
+                _ = ticks.tick() => {
+                    let telemetry = *too_close_rx.borrow();
+                    match (telemetry, last_setpoint) {
+                        (t, Some(s)) if Vehicle::is_too_close(&t)=> {
+                            let accelerate_away_setpoint = Vehicle::avoid_obstacle_move(s.z, &t);
+                            self.vehicle.send_relative_speed(accelerate_away_setpoint).await?;
+                        }
+                        (_, None) => {}
+                        (_, Some(s)) => {
+                            self.vehicle.send_relative_speed(s).await?;
+                        }}
+                },
+                // the `map_ok` is crucial - without it the sender towards telemetry_rx is blocked for the entire return_home
+                // as the select arm is basically just the future that would still have the ref to telemetry open
+                _ = telemetry_rx.wait_for(Telemetry::is_low_bat).map_ok(|_|()) => {
+                    info!("Low battery - returning home");
+                    self.vehicle.return_home().await?;
+                    break;
+                },
+                maybe_motion = commands.next() =>
+                    match maybe_motion {
+                        //stream ended - land
+                        None => {
+                            if last_setpoint.is_some() {
+                                self.vehicle.return_home().await?;
+                            }
+                            // free flight over - stopping
+                            break;
+                        }
+                        Some(ManualControl::Land) => {
+                            last_setpoint = None;
+                            self.vehicle.notify_setpoint_stop().await?;
+                            self.vehicle.land(Duration::from_secs(2)).await?;
+                        }
+                        Some(ManualControl::TakeOff(z) )=> {
+                            self.vehicle.take_off(z, Duration::from_secs(2)).await?;
+                            last_setpoint = Some(SetpointHover { vx: MetersPerSecond(0.0),vy: MetersPerSecond(0.0),z,yaw_rate: 0.0, });
+                        }
+                        Some(ManualControl::Move(setpoint)) => {
+                            last_setpoint = Some(setpoint);
+                            self.vehicle.send_relative_speed(setpoint).await?;
+                        }
+                        Some(ManualControl::Stop) => {
+                            self.vehicle.emergency_stop().await?;
+                            // free flight over - stopping
+                            break;
+                        }
+                        Some(ManualControl::GoHome) => {
+                            last_setpoint = None;
+                            self.vehicle.return_home().await?;
+                        }},
+            }
+        }
+        Ok(())
+    }
+
+    fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
+        self.telemetry_sender.subscribe()
+    }
+
+    fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
+        self.telemetry_latest.subscribe()
+    }
+
+    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
+        self.grid_latest.subscribe()
+    }
+
+    fn mission_status(&self) -> watch::Receiver<MissionStatus> {
+        self.mission_status.subscribe()
+    }
+}

@@ -19,7 +19,7 @@ urlencode() {
   printf '%s' "$out"
 }
 
-for file in "$(dirname "$0")"/../drone-commander/missions/*.json; do
+for file in "$(dirname "$0")"/../gcs/missions/*.json; do
   name="$(basename "$file" .json)"
   status="$(curl -sS -o /dev/null -w '%{http_code}' \
     -X POST "http://127.0.0.1:8000/missions/$(urlencode "$name")" \

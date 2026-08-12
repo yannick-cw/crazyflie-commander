@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "drone-commander",
-    "drone-control", "mission-store", "ratatea",
+    "gcs",
+    "mission-computer", "mission-store", "ratatea",
 ]
 resolver = "3"

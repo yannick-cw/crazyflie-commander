@@ -1,0 +1,31 @@
+[package]
+name = "gcs"
+version = "0.1.0"
+description = "A TUI to control the crazyflie quad"
+authors = ["Yannick Gladow <yannick.gladow@gmail.com>"]
+license = "MIT"
+edition = "2024"
+
+[dependencies]
+color-eyre = "0.6.5"
+crossterm = "0.29.0"
+ratatui = "0.30.2"
+mission-computer = { path = "../mission-computer" }
+ratatea = { path = "../ratatea" }
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-stream = { version = "0.1.18", features = ["time", "sync", "fs"] }
+futures = "0.3.32"
+fastrand = "2.4.1"
+tracing-appender = "0.2"
+tracing-subscriber = "0.3.23"
+tracing = "0.1.44"
+serde_json = "1.0.150"
+serde = { version = "1.0.228", features = ["derive"] }
+chrono = "0.4.45"
+config = { version = "0.15.25" }
+async-trait = "0.1.91"
+reqwest = { version = "0.13.4", features = ["json"] }
+url = { version = "2.5.8", features = ["serde"] }
+
+[dev-dependencies]
+wiremock = "0.6.5"

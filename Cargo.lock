@@ -997,49 +997,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
-name = "drone-commander"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "color-eyre",
- "config",
- "crossterm",
- "drone-control",
- "fastrand",
- "futures",
- "ratatea",
- "ratatui",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "url",
- "wiremock",
-]
-
-[[package]]
-name = "drone-control"
-version = "0.1.0"
-dependencies = [
- "crazyflie-lib",
- "crazyflie-link",
- "crossterm",
- "derive_more",
- "futures",
- "proptest",
- "serde",
- "test-strategy",
- "thiserror 2.0.19",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "dummy"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1374,6 +1331,32 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gcs"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "color-eyre",
+ "config",
+ "crossterm",
+ "fastrand",
+ "futures",
+ "mission-computer",
+ "ratatea",
+ "ratatui",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "url",
+ "wiremock",
 ]
 
 [[package]]
@@ -2162,6 +2145,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mission-computer"
+version = "0.1.0"
+dependencies = [
+ "crazyflie-lib",
+ "crazyflie-link",
+ "crossterm",
+ "derive_more",
+ "futures",
+ "proptest",
+ "serde",
+ "test-strategy",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "mission-store"
 version = "0.1.0"
 dependencies = [
@@ -2171,8 +2171,8 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "config",
- "drone-control",
  "fake",
+ "mission-computer",
  "quickcheck",
  "quickcheck_macros",
  "rand 0.10.2",

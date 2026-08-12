@@ -4,7 +4,7 @@ use anyhow::Context;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use drone_control::Command;
+use mission_computer::MissionItem;
 use sqlx::PgPool;
 use sqlx::types::Uuid;
 use sqlx::types::chrono::Utc;
@@ -14,7 +14,7 @@ use tracing::{Instrument, info, info_span};
 pub async fn post_mission(
     Path(mission_name): Path<ValidName>,
     State(pg_pool): State<PgPool>,
-    Json(mission): Json<Vec<Command>>,
+    Json(mission): Json<Vec<MissionItem>>,
 ) -> Res<StatusCode> {
     let mission_json = serde_json::to_value(mission).unwrap();
 
@@ -52,10 +52,10 @@ pub async fn post_mission(
 pub async fn get_mission(
     Path(mission_name): Path<ValidName>,
     State(pg_pool): State<PgPool>,
-) -> Res<Json<Vec<Command>>> {
+) -> Res<Json<Vec<MissionItem>>> {
     let res = sqlx::query!(
         r#"
-        SELECT commands as "commands: sqlx::types::Json<Vec<Command>>" FROM missions
+        SELECT commands as "commands: sqlx::types::Json<Vec<MissionItem>>" FROM missions
         WHERE name = $1
         "#,
         mission_name.as_ref(),
@@ -74,7 +74,7 @@ pub async fn get_mission(
 pub async fn list_missions(State(pg_pool): State<PgPool>) -> Res<Json<Vec<MissionResponse>>> {
     let res = sqlx::query!(
         r#"
-        SELECT name as "name: ValidName", commands as "commands: sqlx::types::Json<Vec<Command>>" FROM missions
+        SELECT name as "name: ValidName", commands as "commands: sqlx::types::Json<Vec<MissionItem>>" FROM missions
         "#,
     )
     .fetch_all(&pg_pool)

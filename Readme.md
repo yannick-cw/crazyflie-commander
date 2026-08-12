@@ -16,9 +16,9 @@ on the map. `l` lands, `h` returns to the takeoff point, `x` is an emergency sto
 
 Missions come from three places:
 
-- **In code** build a `Vec<Command>` directly (see the ready-made patterns in `drone-control`'s `flight_paths`, and
+- **In code** build a `Vec<Command>` directly (see the ready-made patterns in `mission-computer`'s `flight_paths`, and
   the runnable `cargo run --example fly`)
-- **As JSON** put a `*.json` mission file into `drone-commander/missions/`; it appears on the selection screen
+- **As JSON** put a `*.json` mission file into `gcs/missions/`; it appears on the selection screen
   automatically
 - **Recorded** fly manually and record (below), the recording is saved as a JSON mission and replays exactly like any
   other
@@ -26,7 +26,7 @@ Missions come from three places:
 ### Free flight & recording
 
 Fly the drone by hand with the keyboard. Press `r` to start recording and `r` again to stop, the captured flight is
-written to `drone-commander/missions/recordings/` and can be replayed from the mission screen.
+written to `gcs/missions/recordings/` and can be replayed from the mission screen.
 
 | Key     | Action                    |
 |---------|---------------------------|
@@ -74,8 +74,8 @@ cargo run
 ## Crates
 
 - [`ratatea`](ratatea): an [Elm Architecture][tea] runtime for [ratatui][] TUIs.
-- [`drone-control`](drone-control): library for flying missions on a Crazyflie over the radio link.
-- [`drone-commander`](drone-commander): the terminal UI, built on the two crates above.
+- [`mission-computer`](mission-computer): library for flying missions on a Crazyflie over the radio link.
+- [`cgs`](gcs): the terminal UI, built on the two crates above.
 
 [Crazyflie]: https://www.bitcraze.io/products/crazyflie-2-1-plus/
 
