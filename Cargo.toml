@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = ["datalink",
     "gcs",
     "mission-computer", "mission-store", "ratatea",
 ]

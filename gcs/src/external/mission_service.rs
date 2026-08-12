@@ -1,7 +1,8 @@
 use crate::pages::manual_control::SetpointRecording;
 use async_trait::async_trait;
+use datalink::domain_types::Meters;
 use futures::StreamExt;
-use mission_computer::{Meters, MissionItem};
+use mission_computer::MissionItem;
 use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use std::io::Error;

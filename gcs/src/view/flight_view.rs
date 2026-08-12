@@ -1,3 +1,11 @@
+use crate::pages::mission_monitor::ExecutionMode;
+use crate::pages::{manual_control, mission_monitor};
+use crate::program::{Model, State};
+use crate::view::occupancy_map::OccupancyMap;
+use crate::view::view_common::theme::*;
+use crate::view::view_common::{controls, panel, shell};
+use datalink::domain_types::{Meters, Telemetry};
+use mission_computer::{MissionItem, MissionStatus, Setpoint};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -9,14 +17,6 @@ use ratatui::{
         canvas::{Canvas, Circle, Line as CanvasLine},
     },
 };
-
-use crate::pages::mission_monitor::ExecutionMode;
-use crate::pages::{manual_control, mission_monitor};
-use crate::program::{Model, State};
-use crate::view::occupancy_map::OccupancyMap;
-use crate::view::view_common::theme::*;
-use crate::view::view_common::{controls, panel, shell};
-use mission_computer::{Meters, MissionItem, MissionStatus, Setpoint, Telemetry};
 // AI GENERATED
 
 /// Speed (m/s) that maps to a full gauge / "hot" colour.

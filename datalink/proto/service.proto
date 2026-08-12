@@ -1,0 +1,9 @@
+syntax = "proto3";
+import "telemetry.proto";
+import "google/protobuf/empty.proto";
+
+package wire;
+
+service StreamTelemetry {
+  rpc StreamTelemetry (google.protobuf.Empty) returns (stream WireTelemetry) {}
+}

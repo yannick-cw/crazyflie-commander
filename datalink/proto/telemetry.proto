@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package wire;
+
+message WireTelemetry {
+  enum BatteryLevel {
+    BATTERY_LEVEL_UNSPECIFIED = 0;
+    Low = 1;
+    High = 2;
+  }
+
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  float x_v = 4;
+  float y_v = 5;
+  float z_v = 6;
+  float yaw_degrees = 7;
+  BatteryLevel   battery_level = 9;
+  float range_front = 10;
+  float range_back = 11;
+  float range_right = 12;
+  float range_left = 13;
+  float range_up = 14;
+}

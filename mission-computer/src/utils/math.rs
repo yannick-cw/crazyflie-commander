@@ -1,4 +1,5 @@
-use crate::control::command_unit::{Meters, MetersPerSecond, Waypoint};
+use crate::control::autopilot::Waypoint;
+use datalink::domain_types::{Meters, MetersPerSecond};
 use std::time::Duration;
 
 pub fn inverse_v_when_oob(
@@ -112,8 +113,8 @@ pub fn split_relative_speed_to_absolute(yaw: f32, speed: MetersPerSecond) -> Spe
 
 #[cfg(test)]
 mod tests {
-    use crate::control::command_unit::{Meters, MetersPerSecond};
     use crate::utils::math::{OrbitPos, calc_orbit_points, inverse_v_when_oob};
+    use datalink::domain_types::{Meters, MetersPerSecond};
     use proptest::prelude::*;
     use std::time::Duration;
     use test_strategy::proptest;

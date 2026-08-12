@@ -1,7 +1,8 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use mission_computer::{MissionItem, Telemetry};
+use datalink::domain_types::Telemetry;
+use mission_computer::MissionItem;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use tracing::{error, warn};

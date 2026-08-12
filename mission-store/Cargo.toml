@@ -11,6 +11,7 @@ path = "src/main.rs"
 name = "mission-store"
 
 [dependencies]
+datalink = { path = "../datalink" }
 axum = "0.8.9"
 tokio = { version = "1.53.1", features = ["full"] }
 mission-computer = { path = "../mission-computer" }

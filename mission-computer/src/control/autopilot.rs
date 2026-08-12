@@ -7,10 +7,10 @@ use crate::occupancy::grid::OccupancyGrid;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
-use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
+use datalink::domain_types::{BatteryLevel, Meters, MetersPerSecond, Telemetry};
+use derive_more::Add;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
 use tracing::warn;
@@ -21,51 +21,38 @@ pub enum Abort {
     Land,
 }
 
-#[derive(
-    Debug,
-    Default,
-    Clone,
-    PartialEq,
-    PartialOrd,
-    Serialize,
-    Deserialize,
-    Copy,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Neg,
-)]
-pub struct Meters(pub f32);
-
-impl Display for Meters {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}m", self.0)
+pub fn from_log_data(tele_log: &LogData, range_bat_log: &LogData) -> Telemetry {
+    let get = |name: &str, l: &LogData| {
+        l.data
+            .get(name)
+            .map(Value::to_f64_lossy)
+            .unwrap_or_else(|| {
+                warn!("Could not unpack log var {name} in log data {l:?}");
+                0.0
+            }) as f32
+    };
+    Telemetry {
+        x: Meters(get(STATE_ESTIMATE_X, tele_log)),
+        y: Meters(get(STATE_ESTIMATE_Y, tele_log)),
+        z: Meters(get(STATE_ESTIMATE_Z, tele_log)),
+        x_v: MetersPerSecond(get(STATE_ESTIMATE_VX, tele_log)),
+        y_v: MetersPerSecond(get(STATE_ESTIMATE_VY, tele_log)),
+        // z_v: MetersPerSecond(get("stateEstimate.vz")),
+        yaw_degrees: get(STATE_ESTIMATE_YAW, tele_log),
+        battery_level: if get(PM_STATE, range_bat_log) >= 3.0 {
+            BatteryLevel::Low
+        } else {
+            BatteryLevel::High
+        },
+        // if 0.0 range causes problems this could be the cause on missing log data
+        range_front: Meters(get(RANGE_FRONT, range_bat_log) / 1000.0),
+        range_back: Meters(get(RANGE_BACK, range_bat_log) / 1000.0),
+        range_left: Meters(get(RANGE_LEFT, range_bat_log) / 1000.0),
+        range_right: Meters(get(RANGE_RIGHT, range_bat_log) / 1000.0),
+        range_up: Meters(get(RANGE_UP, range_bat_log) / 1000.0),
     }
 }
 
-#[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Neg,
-    Clone,
-    Copy,
-    PartialEq,
-    PartialOrd,
-    Default,
-    Add,
-    AddAssign,
-    SubAssign,
-    Sub,
-    Mul,
-)]
-pub struct MetersPerSecond(pub f32);
-impl Display for MetersPerSecond {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}m/s", self.0)
-    }
-}
 #[derive(Debug, Default, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct BilliardParams {
     pub bl_x: Meters,
@@ -166,13 +153,6 @@ impl MissionItem {
 )]
 pub struct TrajectoryId(pub u8);
 
-#[derive(Debug, Copy, Clone, PartialEq, Default, PartialOrd, Hash, Serialize, Deserialize)]
-pub enum BatteryLevel {
-    Low,
-    #[default]
-    High,
-}
-
 #[derive(Debug, Clone, PartialEq, Default, PartialOrd, Serialize, Deserialize)]
 pub enum MissionStatus {
     #[default]
@@ -193,85 +173,6 @@ pub struct Progress {
     pub current_command: MissionItem,
     pub command_num: usize,
     pub total_commands: usize,
-}
-
-#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct Telemetry {
-    pub x: Meters,
-    pub y: Meters,
-    pub z: Meters,
-    pub x_v: MetersPerSecond,
-    pub y_v: MetersPerSecond,
-    // pub z_v: MetersPerSecond,
-    pub yaw_degrees: f32,
-    pub battery_level: BatteryLevel,
-    pub range_front: Meters,
-    pub range_back: Meters,
-    pub range_right: Meters,
-    pub range_left: Meters,
-    pub range_up: Meters,
-}
-impl Telemetry {
-    pub fn from_log_data(tele_log: &LogData, range_bat_log: &LogData) -> Self {
-        let get = |name: &str, l: &LogData| {
-            l.data
-                .get(name)
-                .map(Value::to_f64_lossy)
-                .unwrap_or_else(|| {
-                    warn!("Could not unpack log var {name} in log data {l:?}");
-                    0.0
-                }) as f32
-        };
-        Self {
-            x: Meters(get(STATE_ESTIMATE_X, tele_log)),
-            y: Meters(get(STATE_ESTIMATE_Y, tele_log)),
-            z: Meters(get(STATE_ESTIMATE_Z, tele_log)),
-            x_v: MetersPerSecond(get(STATE_ESTIMATE_VX, tele_log)),
-            y_v: MetersPerSecond(get(STATE_ESTIMATE_VY, tele_log)),
-            // z_v: MetersPerSecond(get("stateEstimate.vz")),
-            yaw_degrees: get(STATE_ESTIMATE_YAW, tele_log),
-            battery_level: if get(PM_STATE, range_bat_log) >= 3.0 {
-                BatteryLevel::Low
-            } else {
-                BatteryLevel::High
-            },
-            // if 0.0 range causes problems this could be the cause on missing log data
-            range_front: Meters(get(RANGE_FRONT, range_bat_log) / 1000.0),
-            range_back: Meters(get(RANGE_BACK, range_bat_log) / 1000.0),
-            range_left: Meters(get(RANGE_LEFT, range_bat_log) / 1000.0),
-            range_right: Meters(get(RANGE_RIGHT, range_bat_log) / 1000.0),
-            range_up: Meters(get(RANGE_UP, range_bat_log) / 1000.0),
-        }
-    }
-    pub fn is_low_bat(&self) -> bool {
-        self.battery_level == BatteryLevel::Low
-    }
-}
-impl Telemetry {
-    pub fn x(&self) -> f32 {
-        self.x.0
-    }
-    pub fn y(&self) -> f32 {
-        self.y.0
-    }
-    pub fn z(&self) -> f32 {
-        self.z.0
-    }
-    pub fn vx(&self) -> f32 {
-        self.x_v.0
-    }
-    pub fn vy(&self) -> f32 {
-        self.y_v.0
-    }
-    // pub fn vz(&self) -> f32 {
-    //     self.z_v.0
-    // }
-    pub fn yaw(&self) -> f32 {
-        self.yaw_degrees
-    }
-    pub fn speed(&self) -> f32 {
-        (self.x_v.0.powi(2) + self.y_v.0.powi(2)).sqrt()
-    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
@@ -347,7 +248,6 @@ pub trait Autopilot {
     // emits latest telemetry - is updates every 10ms
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
     // emits latest telemetry - is updates every 10ms
-    fn latest_telemetry(&self) -> watch::Receiver<Telemetry>;
     fn latest_grid(&self) -> watch::Receiver<OccupancyGrid>;
     fn mission_status(&self) -> watch::Receiver<MissionStatus>;
 }

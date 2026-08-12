@@ -1,4 +1,5 @@
 use crate::external::mission_service::MissionService;
+use crate::ground_data_link::vehicle_link::VehicleLink;
 use crate::pages::home::ModeSelection;
 use crate::pages::manual_control::Msg::CommandSet;
 use crate::pages::manual_control::SetpointRecording;
@@ -7,8 +8,9 @@ use crate::pages::{home, manual_control, mission_monitor, mission_select};
 use crate::program::NavigationMessage::*;
 use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use datalink::domain_types::Telemetry;
 use futures::StreamExt;
-use mission_computer::{Autopilot, OccupancyGrid, Telemetry};
+use mission_computer::{Autopilot, OccupancyGrid};
 use ratatea::{Cmd, Ratatea, Sub};
 use ratatui::Frame;
 use std::rc::Rc;
@@ -66,6 +68,7 @@ pub enum NavigationMessage {
 
 pub struct Program<U: Autopilot + 'static> {
     command_unit: &'static U,
+    vehicle_link: VehicleLink,
     terminal_supports_enhancements: bool,
     // needs to outlive the places it's shared to go into cmds - though not share between threads
     mission_loader: Rc<dyn MissionService>,
@@ -74,11 +77,13 @@ pub struct Program<U: Autopilot + 'static> {
 impl<U: Autopilot> Program<U> {
     pub fn new(
         command_unit: &'static U,
+        vehicle_link: VehicleLink,
         terminal_supports_enhancements: bool,
         loader: Rc<dyn MissionService>,
     ) -> Self {
         Self {
             command_unit,
+            vehicle_link,
             terminal_supports_enhancements,
             mission_loader: loader,
         }
@@ -216,7 +221,7 @@ impl<U: Autopilot> Ratatea for Program<U> {
     fn subscriptions(&self, _m: &Model) -> Sub<Self::Msg> {
         {
             vec![
-                WatchStream::new(self.command_unit.latest_telemetry().clone())
+                WatchStream::new(self.vehicle_link.latest_telemetry.subscribe())
                     .map(Msg::TelemetryUpdate)
                     .boxed(),
                 WatchStream::new(self.command_unit.latest_grid().clone())

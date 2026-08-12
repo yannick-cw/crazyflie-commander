@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use axum_extra::TypedHeader;
-use mission_computer::Telemetry;
+use datalink::domain_types::Telemetry;
 use sqlx::error::ErrorKind::ForeignKeyViolation;
 use sqlx::types::Uuid;
 use sqlx::{PgPool, PgTransaction};

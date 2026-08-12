@@ -1,6 +1,6 @@
-use crate::control::command_unit::{
+use crate::control::autopilot::{
     Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, SetpointHover,
-    Telemetry, TrajectoryId, Waypoint,
+    TrajectoryId, Waypoint, from_log_data,
 };
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
@@ -12,9 +12,10 @@ use crate::control::vehicle::Vehicle;
 use crate::occupancy::grid::{OccupancyGrid, update_grid};
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
-use crate::{Meters, MetersPerSecond, Progress, Reason};
+use crate::{Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
+use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
 use futures::{Stream, StreamExt, TryFutureExt};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
@@ -117,7 +118,7 @@ pub async fn setup_link() -> Res<CrazyPilot> {
                 tokio::join!(log_stream_telemetry.next(), log_stream_range_bat.next());
             match (tele_block, battery_block) {
                 (Ok(tele_log), Ok(bat_log)) => {
-                    let telemetry = Telemetry::from_log_data(&tele_log, &bat_log);
+                    let telemetry = from_log_data(&tele_log, &bat_log);
                     let _ = local_sender_tx.send(telemetry);
                     let _ = local_watch_tx.send(telemetry);
                 }
@@ -130,7 +131,6 @@ pub async fn setup_link() -> Res<CrazyPilot> {
     Ok(CrazyPilot {
         vehicle: Vehicle::new(cf, sender_tx.subscribe()),
         telemetry_sender: tx,
-        telemetry_latest: sender_tx,
         grid_latest: sender_grid,
         mission_status,
     })
@@ -143,7 +143,6 @@ pub async fn setup_link() -> Res<CrazyPilot> {
 pub struct CrazyPilot {
     vehicle: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,
-    telemetry_latest: watch::Sender<Telemetry>,
     grid_latest: watch::Sender<OccupancyGrid>,
     mission_status: watch::Sender<MissionStatus>,
 }
@@ -356,10 +355,6 @@ impl Autopilot for CrazyPilot {
 
     fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
         self.telemetry_sender.subscribe()
-    }
-
-    fn latest_telemetry(&self) -> watch::Receiver<Telemetry> {
-        self.telemetry_latest.subscribe()
     }
 
     fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {

@@ -1,12 +1,12 @@
+use crate::errors::Res;
+use crate::{
+    Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, OccupancyGrid,
+    Progress, TrajectoryId, Waypoint,
+};
 use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
 use futures::Stream;
-use mission_computer::errors::Res;
-use mission_computer::{
-    Abort, Autopilot, FlightMode, MissionItem, OccupancyGrid, TrajectoryId, Waypoint,
-};
 use std::time::Duration;
-use tokio::sync::broadcast::Receiver;
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
 use tokio::{select, spawn, time};
 
@@ -43,21 +43,37 @@ impl Autopilot for DevPilot {
         Ok((TrajectoryId::default(), Duration::default()))
     }
 
-    async fn fly(&self, _commands: impl Stream<Item = mission_computer::ManualControl>) -> Res<()> {
+    async fn fly(&self, _commands: impl Stream<Item = ManualControl>) -> Res<()> {
         Ok(())
     }
 
-    fn telemetry(&self) -> Receiver<Telemetry> {
-        todo!()
+    fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
+        let (sender, receiver) = broadcast::channel(1024);
+        spawn(async move {
+            let mut ticks = time::interval(Duration::from_millis(10));
+            let mut tele = Telemetry::default();
+            loop {
+                ticks.tick().await;
+                let j = || fastrand::f32() - 0.5;
+                tele.x = tele.x + Meters(j());
+                tele.y = tele.y + Meters(j());
+                tele.z = tele.z + Meters(j());
+                tele.x_v += MetersPerSecond(j());
+                tele.y_v += MetersPerSecond(j());
+                tele.yaw_degrees += j();
+                sender.send(tele).unwrap();
+            }
+        });
+        receiver
     }
 
-    fn latest_grid(&self) -> watch::Receiver<mission_computer::OccupancyGrid> {
+    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
         let (_, receiver) = watch::channel(OccupancyGrid::new());
         receiver
     }
 
-    fn mission_status(&self) -> watch::Receiver<mission_computer::MissionStatus> {
-        let (sender, receiver) = watch::channel(mission_computer::MissionStatus::Running(None));
+    fn mission_status(&self) -> watch::Receiver<MissionStatus> {
+        let (sender, receiver) = watch::channel(MissionStatus::Running(None));
         spawn(async move {
             loop {
                 let mut ticks = time::interval(Duration::from_millis(2000));
@@ -89,17 +105,15 @@ impl Autopilot for DevPilot {
                     },
                 ];
                 for (i, c) in commands.iter().enumerate() {
-                    let progress = mission_computer::Progress {
+                    let progress = Progress {
                         current_command: c.clone(),
                         command_num: i,
                         total_commands: commands.len(),
                     };
-                    sender
-                        .send(mission_computer::MissionStatus::Running(Some(progress)))
-                        .unwrap();
+                    sender.send(MissionStatus::Running(Some(progress))).unwrap();
                     ticks.tick().await;
                 }
-                sender.send(mission_computer::MissionStatus::Idle).unwrap();
+                sender.send(MissionStatus::Idle).unwrap();
                 ticks.tick().await;
             }
         });

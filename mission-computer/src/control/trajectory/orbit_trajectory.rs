@@ -1,6 +1,6 @@
-use crate::Meters;
 use crate::errors::Res;
 use crazyflie_lib::subsystems::memory::{CompressedSegment, CompressedStart};
+use datalink::domain_types::Meters;
 use std::time::Duration;
 
 pub struct CompressedTrajectory {

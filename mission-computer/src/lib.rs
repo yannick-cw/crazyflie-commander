@@ -14,17 +14,20 @@
 //! drone.run_mission(orbit(), async { None }).await
 //! # }
 //! ```
+mod air_data_link;
 mod control;
 mod occupancy;
 mod utils;
 
-pub use control::command_unit::{
-    Abort, Autopilot, FlightMode, ManualControl, Meters, MetersPerSecond, MissionItem,
-    MissionStatus, Progress, Reason, SetpointHover, Telemetry, TrajectoryId, Waypoint,
+pub use air_data_link::server;
+pub use control::autopilot::{
+    Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, Progress, Reason,
+    SetpointHover, TrajectoryId, Waypoint,
 };
 pub use control::crazyflie::CrazyPilot;
 pub use control::crazyflie::setup_link;
 pub use control::low_level_engine::Setpoint;
 pub use occupancy::grid::{Cell, OccupancyGrid};
+pub use utils::dev_pilot;
 pub use utils::errors;
 pub use utils::flight_paths;

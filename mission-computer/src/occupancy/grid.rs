@@ -12,7 +12,7 @@
 // keep no knowlege of being[[f32; 120]; 120] free space and then 0.8 occupied or so, prob decreases the further away
 
 use crate::utils::math::get_angle_in_180;
-use crate::{Meters, Telemetry};
+use datalink::domain_types::{Meters, Telemetry};
 
 // cell is 5*5cm => 120*120 cells for 6m2
 // values are all in ln

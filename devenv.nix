@@ -64,7 +64,7 @@ in
     # creates a symlinked .env file - this is mostly just for rust rover
     ".env".text = ''
       DATABASE_URL=${config.env.DATABASE_URL}
-      #SQLX_OFFLINE=true
+      SQLX_OFFLINE=true
       APP_DB_PASSWD="${db.pass}"
     '';
     # creates a symlinked config, for rust rover
@@ -149,6 +149,9 @@ in
         };
 
       };
+    };
+    mc = {
+      exec = "cargo run -p mission-computer";
     };
   };
 }

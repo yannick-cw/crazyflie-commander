@@ -1,4 +1,4 @@
-use crate::control::command_unit::{Meters, MetersPerSecond, Telemetry};
+use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 

@@ -1,0 +1,22 @@
+[package]
+name = "datalink"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+prost = { version = "0.14.4" }
+#prost-types = { version = "0.14.4", features = ["chrono", "arbitrary"] }
+tonic = "0.14.6"
+derive_more = { version = "2.1.1", features = ["full"] }
+tonic-prost = "0.14.6"
+serde = { version = "1.0.228", features = ["derive"] }
+
+[build-dependencies]
+prost = { version = "0.14.4" }
+prost-types = { version = "0.14.4", features = ["chrono", "arbitrary"] }
+protox = "0.9.1"
+tonic = "0.14.6"
+tonic-prost-build = "0.14.6"

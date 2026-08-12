@@ -1,13 +1,29 @@
 use color_eyre::Report;
 use color_eyre::eyre::eyre;
 use config::{Config, Environment, File};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::path::Path;
+use tonic::transport::Uri;
 use url::Url;
 
 #[derive(Deserialize, Debug)]
 pub struct Settings {
     pub mission_store: MissionStoreSettings,
+    pub datalink: DataLinkSettings,
+}
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "lowercase")]
+pub struct DataLinkSettings {
+    #[serde(deserialize_with = "deserialize_uri")]
+    pub address: Uri,
+}
+fn deserialize_uri<'de, D>(d: D) -> Result<Uri, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let str_uri = String::deserialize(d)?;
+    let uri = str_uri.parse::<Uri>();
+    uri.map_err(|_| serde::de::Error::custom("Invalid uri"))
 }
 
 #[derive(Deserialize, Debug)]
@@ -49,6 +65,7 @@ pub fn get_config(config_dir: &Path) -> color_eyre::Result<Settings> {
 
     let mission_store = Config::builder()
         .add_source(File::from(config_dir.join(environment.0)))
+        .add_source(File::from(config_dir.join("base.toml")))
         // allows TUI_REMOTE_STORE_SETTINGS__KEY=xxx to get into the conf correctly
         .add_source(
             Environment::with_prefix("TUI")

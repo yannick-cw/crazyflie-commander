@@ -1,6 +1,6 @@
 use crate::missions::simple_mission;
 use crate::setup::{get, post, spawn_app};
-use mission_computer::Telemetry;
+use datalink::domain_types::Telemetry;
 use reqwest::{StatusCode, header};
 use serde_json::{Value, json};
 use std::error::Error;

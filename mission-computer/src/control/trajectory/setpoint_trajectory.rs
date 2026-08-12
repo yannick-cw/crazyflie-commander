@@ -1,7 +1,7 @@
-use crate::MetersPerSecond;
-use crate::control::command_unit::{FlightMode, Waypoint};
+use crate::control::autopilot::{FlightMode, Waypoint};
 use crate::errors::Res;
 use crazyflie_lib::subsystems::memory::{Poly, Poly4D};
+use datalink::domain_types::MetersPerSecond;
 use std::time::Duration;
 use tracing::info;
 
@@ -74,7 +74,7 @@ pub fn waypoints_to_trajectory(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Meters;
+    use datalink::domain_types::Meters;
     use std::f32::consts::FRAC_1_SQRT_2;
 
     #[test]
