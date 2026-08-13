@@ -7,8 +7,8 @@ use datalink::domain_types::{
 };
 use futures::Stream;
 use std::time::Duration;
+use tokio::sync::broadcast;
 use tokio::sync::broadcast::Receiver;
-use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
 use tokio::{select, spawn, time};
 
@@ -49,7 +49,7 @@ impl Autopilot for DevPilot {
         Ok(())
     }
 
-    fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
+    fn telemetry(&self) -> Receiver<Telemetry> {
         let (sender, receiver) = broadcast::channel(1024);
         spawn(async move {
             let mut ticks = time::interval(Duration::from_millis(10));
@@ -104,8 +104,9 @@ impl Autopilot for DevPilot {
         receiver
     }
 
-    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
-        let (_, receiver) = watch::channel(OccupancyGrid::new());
+    fn grid(&self) -> Receiver<OccupancyGrid> {
+        let (s, receiver) = broadcast::channel(64);
+        let _ = s.send(OccupancyGrid::default());
         receiver
     }
 }

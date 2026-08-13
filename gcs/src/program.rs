@@ -8,9 +8,9 @@ use crate::pages::{home, manual_control, mission_monitor, mission_select};
 use crate::program::NavigationMessage::*;
 use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use datalink::domain_types::{Telemetry, VehicleHealth};
+use datalink::domain_types::{OccupancyGrid, Telemetry, VehicleHealth};
 use futures::StreamExt;
-use mission_computer::{Autopilot, OccupancyGrid};
+use mission_computer::Autopilot;
 use ratatea::{Cmd, Ratatea, Sub};
 use ratatui::Frame;
 use std::rc::Rc;
@@ -22,7 +22,7 @@ use tokio_stream::wrappers::{UnboundedReceiverStream, WatchStream};
 pub struct Model {
     pub telemetry: Telemetry,
     pub health: VehicleHealth,
-    pub grid: Box<OccupancyGrid>,
+    pub grid: OccupancyGrid,
     pub terminal_supports_enhancements: bool,
     pub exit: bool,
     pub state: State,
@@ -51,7 +51,7 @@ pub enum Msg {
     TelemetryUpdate(Telemetry),
     HealthUpdate(VehicleHealth),
     // grid is a bit larger - better to box and have on the heap
-    GridUpdate(Box<OccupancyGrid>),
+    GridUpdate(OccupancyGrid),
     Key(KeyEvent),
     Resize,
     Quit,
@@ -101,7 +101,7 @@ impl<U: Autopilot> Ratatea for Program<U> {
             Model {
                 telemetry: Default::default(),
                 health: Default::default(),
-                grid: Box::new(OccupancyGrid::new()),
+                grid: vec![vec![]],
                 exit: false,
                 terminal_supports_enhancements: self.terminal_supports_enhancements,
                 state: State::default(),
@@ -234,8 +234,8 @@ impl<U: Autopilot> Ratatea for Program<U> {
                 WatchStream::new(self.vehicle_link.latest_health.subscribe())
                     .map(Msg::HealthUpdate)
                     .boxed(),
-                WatchStream::new(self.command_unit.latest_grid().clone())
-                    .map(|g| Msg::GridUpdate(Box::new(g)))
+                WatchStream::new(self.vehicle_link.latest_grid.subscribe())
+                    .map(|g| Msg::GridUpdate(g))
                     .boxed(),
                 WatchStream::new(self.vehicle_link.latest_status.subscribe())
                     .map(|update| Msg::MissionExecution(MissionUpdate(update)))

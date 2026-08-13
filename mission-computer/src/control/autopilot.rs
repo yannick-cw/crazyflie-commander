@@ -14,7 +14,7 @@ use derive_more::Add;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 use tracing::warn;
 
 #[derive(Clone, Copy, Debug)]
@@ -242,6 +242,6 @@ pub trait Autopilot {
     fn health(&self) -> broadcast::Receiver<VehicleHealth>;
     // emits mission status - is updates every 100ms
     fn status(&self) -> broadcast::Receiver<MissionStatus>;
-    // emits latest telemetry - is updates every 10ms
-    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid>;
+    // emits latest grid - updates every 100ms
+    fn grid(&self) -> broadcast::Receiver<OccupancyGrid>;
 }

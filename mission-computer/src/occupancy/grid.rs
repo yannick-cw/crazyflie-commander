@@ -17,12 +17,17 @@ use datalink::domain_types::{Meters, Telemetry};
 // cell is 5*5cm => 120*120 cells for 6m2
 // values are all in ln
 #[derive(Debug, Clone, PartialEq)]
-pub struct OccupancyGrid([[Cell; GRID_SIZE]; GRID_SIZE]);
+pub struct OccupancyGrid(Vec<Vec<Cell>>);
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct Cell {
     pub ln_ods: f32,
     pub x: Meters,
     pub y: Meters,
+}
+impl From<Cell> for datalink::domain_types::Cell {
+    fn from(Cell { ln_ods, x, y }: Cell) -> Self {
+        Self { ln_ods, x, y }
+    }
 }
 // l(x) = log (p(x) / 1-p(x)) is my l(m_i|z_1-t,x_1:t) <= cell occupied given all measures and pos
 impl Cell {
@@ -61,7 +66,9 @@ impl Default for OccupancyGrid {
 
 impl OccupancyGrid {
     pub fn new() -> OccupancyGrid {
-        let mut cells = [[Cell::default(); GRID_SIZE]; GRID_SIZE];
+        let mut cells = [[Cell::default(); GRID_SIZE]; GRID_SIZE]
+            .map(|i| i.to_vec())
+            .to_vec();
         cells.iter_mut().enumerate().for_each(|(y, inner)| {
             inner.iter_mut().enumerate().for_each(|(x, value)| {
                 // missing shift to middle of cell...
@@ -79,8 +86,8 @@ impl OccupancyGrid {
         OccupancyGrid(cells)
     }
 
-    pub fn to_array(&self) -> &[[Cell; GRID_SIZE]; GRID_SIZE] {
-        &self.0
+    pub fn inner(self) -> Vec<Vec<Cell>> {
+        self.0
     }
 
     fn update_each<F>(&mut self, f: F)

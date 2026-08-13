@@ -95,26 +95,26 @@ pub async fn setup_link() -> Res<CrazyPilot> {
         .start(LogPeriod::from_millis(1000).unwrap())
         .await?;
 
-    let (tx, _rx) = broadcast::channel(64);
-    let (health_sender, _h_r) = broadcast::channel(64);
+    let (tx, _rx) = broadcast::channel(1024);
+    let (health_sender, _h_r) = broadcast::channel(1024);
     let (health_watch, _) = watch::channel(VehicleHealth::default());
     let (sender_tx, r) = watch::channel(Telemetry::default());
-    let (sender_grid, _) = watch::channel(OccupancyGrid::new());
+    let (grid_sender, _) = broadcast::channel(64);
     let local_sender_tx = tx.clone();
     let local_watch_tx = sender_tx.clone();
-    let local_grid_sender = sender_grid.clone();
+    let local_grid_sender = grid_sender.clone();
     let local_health_sender = health_sender.clone();
     let local_watch_health = health_watch.clone();
 
     tokio::spawn(async move {
-        let mut ticks = time::interval(Duration::from_millis(50));
+        let mut ticks = time::interval(Duration::from_millis(100));
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut grid = OccupancyGrid::new();
         loop {
             ticks.tick().await;
             let telemetry = *r.borrow();
             update_grid(&mut grid, &telemetry);
-            let _ = local_grid_sender.send_replace(grid.clone());
+            let _ = local_grid_sender.send(grid.clone());
         }
     });
     tokio::spawn(async move {
@@ -145,7 +145,7 @@ pub async fn setup_link() -> Res<CrazyPilot> {
         vehicle: Vehicle::new(cf, sender_tx.subscribe(), health_watch.subscribe()),
         telemetry_sender: tx,
         health_sender,
-        grid_latest: sender_grid,
+        grid_sender,
         mission_status,
     })
 }
@@ -158,7 +158,7 @@ pub struct CrazyPilot {
     vehicle: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,
     health_sender: broadcast::Sender<VehicleHealth>,
-    grid_latest: watch::Sender<OccupancyGrid>,
+    grid_sender: broadcast::Sender<OccupancyGrid>,
     mission_status: broadcast::Sender<MissionStatus>,
 }
 
@@ -378,7 +378,7 @@ impl Autopilot for CrazyPilot {
         self.mission_status.subscribe()
     }
 
-    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
-        self.grid_latest.subscribe()
+    fn grid(&self) -> Receiver<OccupancyGrid> {
+        self.grid_sender.subscribe()
     }
 }

@@ -1,11 +1,14 @@
 syntax = "proto3";
 import "telemetry.proto";
+import "grid.proto";
 import "google/protobuf/empty.proto";
 
 package downlink;
 
 service StreamTelemetry {
-  // extend to carry different messages at different rates: pos state data, health data (bat, maybe armed or so), mission status
+  // telemetry link streaming - state at 100hz, health at 1hz, mission satus when available
   rpc StreamTelemetry (google.protobuf.Empty) returns (stream Message) {}
-  // new stream with grid
+
+  // payload link streaming the occupancy grid at 10hz
+  rpc StreamPayload (google.protobuf.Empty) returns (stream OccupancyGrid) {}
 }

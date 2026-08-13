@@ -7,7 +7,6 @@ use mission_computer::{
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
-use tokio::sync::watch;
 use tokio::time::sleep;
 
 pub struct DevPilot;
@@ -59,8 +58,7 @@ impl Autopilot for DevPilot {
         todo!()
     }
 
-    fn latest_grid(&self) -> watch::Receiver<mission_computer::OccupancyGrid> {
-        let (_, receiver) = watch::channel(OccupancyGrid::new());
-        receiver
+    fn grid(&self) -> Receiver<OccupancyGrid> {
+        todo!()
     }
 }

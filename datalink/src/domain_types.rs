@@ -1,6 +1,8 @@
 use crate::downlink::MissionStatus as RawStatus;
+use crate::downlink::OccupancyGrid as RawOccupancyGrid;
 use crate::downlink::mission_status::aborted::Reason as RawReason;
 use crate::downlink::mission_status::running::Progress as RawProgress;
+use crate::downlink::occupancy_grid::{Cell as RawCell, ListOfCells};
 use crate::downlink::{VehicleHealth as RawHealth, vehicle_health};
 use crate::downlink::{VehicleState, mission_status};
 use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
@@ -269,6 +271,46 @@ impl From<Reason> for RawReason {
             Reason::Landing => RawReason::Landing,
             Reason::HardStop => RawReason::HardStop,
             Reason::LowBattery => RawReason::LowBattery,
+        }
+    }
+}
+
+pub type OccupancyGrid = Vec<Vec<Cell>>;
+impl From<OccupancyGrid> for RawOccupancyGrid {
+    fn from(value: OccupancyGrid) -> Self {
+        Self {
+            lists: value
+                .into_iter()
+                .map(|cells| ListOfCells {
+                    cell: cells.into_iter().map(|c| c.into()).collect(),
+                })
+                .collect(),
+        }
+    }
+}
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+pub struct Cell {
+    pub ln_ods: f32,
+    pub x: Meters,
+    pub y: Meters,
+}
+
+impl From<Cell> for RawCell {
+    fn from(Cell { ln_ods, x, y }: Cell) -> Self {
+        Self {
+            ln_ods,
+            x: x.0,
+            y: y.0,
+        }
+    }
+}
+
+impl From<RawCell> for Cell {
+    fn from(RawCell { ln_ods, x, y }: RawCell) -> Self {
+        Self {
+            ln_ods,
+            x: Meters(x),
+            y: Meters(y),
         }
     }
 }

@@ -7,10 +7,9 @@
 //! route/drone overlay keeps its own characters and colours on top. (The canvas resets
 //! the background across its whole area, so this cannot be drawn underneath it.)
 
-use mission_computer::OccupancyGrid;
+use datalink::domain_types::OccupancyGrid;
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 use std::ops::RangeInclusive;
-
 // AI GENERATED
 
 /// Log-odds magnitude below which a cell counts as "no real evidence yet" and stays blank.
@@ -41,7 +40,7 @@ impl<'a> OccupancyMap<'a> {
 
 impl Widget for OccupancyMap<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let cells = self.grid.to_array();
+        let cells = self.grid;
         if area.is_empty() || cells.len() < 2 {
             return;
         }
