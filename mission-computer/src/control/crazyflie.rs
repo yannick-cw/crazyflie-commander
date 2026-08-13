@@ -1,6 +1,6 @@
 use crate::control::autopilot::{
-    Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, SetpointHover,
-    TrajectoryId, Waypoint, health_from_log, telemetry_from_log,
+    Abort, Autopilot, FlightMode, ManualControl, MissionItem, SetpointHover, TrajectoryId,
+    Waypoint, health_from_log, telemetry_from_log,
 };
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
@@ -12,10 +12,11 @@ use crate::control::vehicle::Vehicle;
 use crate::occupancy::grid::{OccupancyGrid, update_grid};
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
-use crate::{Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
-use datalink::domain_types::{Meters, MetersPerSecond, Telemetry, VehicleHealth};
+use datalink::domain_types::{
+    Meters, MetersPerSecond, MissionStatus, Progress, Reason, Telemetry, VehicleHealth,
+};
 use futures::{Stream, StreamExt, TryFutureExt};
 use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
@@ -137,7 +138,7 @@ pub async fn setup_link() -> Res<CrazyPilot> {
             let _ = local_watch_health.send_replace(health);
         }
     });
-    let (status_sender, _) = watch::channel(MissionStatus::Idle);
+    let (status_sender, _) = broadcast::channel(64);
     let mission_status = status_sender.clone();
 
     Ok(CrazyPilot {
@@ -158,7 +159,7 @@ pub struct CrazyPilot {
     telemetry_sender: broadcast::Sender<Telemetry>,
     health_sender: broadcast::Sender<VehicleHealth>,
     grid_latest: watch::Sender<OccupancyGrid>,
-    mission_status: watch::Sender<MissionStatus>,
+    mission_status: broadcast::Sender<MissionStatus>,
 }
 
 impl CrazyPilot {
@@ -169,13 +170,13 @@ impl CrazyPilot {
         let total_commands = mission.len();
 
         for (i, command) in mission.into_iter().enumerate() {
-            self.mission_status
+            let _ = self
+                .mission_status
                 .send(MissionStatus::Running(Some(Progress {
-                    current_command: command.clone(),
+                    current_command: format!("{:?}", command),
                     command_num: i,
                     total_commands,
-                })))
-                .unwrap();
+                })));
 
             match command {
                 MissionItem::Takeoff { height, duration } => {
@@ -222,9 +223,9 @@ impl CrazyPilot {
                 info!("HARD STOP..");
                 self.vehicle.emergency_stop().await?;
 
-                self.mission_status
-                    .send(MissionStatus::Aborted(Reason::HardStop))
-                    .unwrap();
+                let _ = self
+                    .mission_status
+                    .send(MissionStatus::Aborted(Reason::HardStop));
 
                 Ok(())
             }
@@ -232,9 +233,9 @@ impl CrazyPilot {
                 info!("Abort Land..");
                 self.vehicle.return_home().await?;
 
-                self.mission_status
-                    .send(MissionStatus::Aborted(Reason::Landing))
-                    .unwrap();
+                let _ = self
+                    .mission_status
+                    .send(MissionStatus::Aborted(Reason::Landing));
 
                 Ok(())
             }
@@ -255,9 +256,8 @@ impl Autopilot for CrazyPilot {
         select! {
             mission = self.start_mission(mission) => {
                 info!("Mission complete");
-                self.mission_status
-                    .send(MissionStatus::Idle)
-                    .unwrap();
+                let _ = self.mission_status
+                    .send(MissionStatus::Idle);
                 mission?
             }
             Some(abort) = abort_signal => {
@@ -267,9 +267,8 @@ impl Autopilot for CrazyPilot {
                 info!("Low battery - returning home");
                 self.vehicle.return_home().await?;
 
-                self.mission_status
-                    .send(MissionStatus::Aborted(Reason::Landing))
-                    .unwrap();
+                let _ = self.mission_status
+                    .send(MissionStatus::Aborted(Reason::Landing));
             }
         }
         Ok(())
@@ -367,7 +366,7 @@ impl Autopilot for CrazyPilot {
         Ok(())
     }
 
-    fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
+    fn telemetry(&self) -> Receiver<Telemetry> {
         self.telemetry_sender.subscribe()
     }
 
@@ -375,11 +374,11 @@ impl Autopilot for CrazyPilot {
         self.health_sender.subscribe()
     }
 
-    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
-        self.grid_latest.subscribe()
+    fn status(&self) -> Receiver<MissionStatus> {
+        self.mission_status.subscribe()
     }
 
-    fn mission_status(&self) -> watch::Receiver<MissionStatus> {
-        self.mission_status.subscribe()
+    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
+        self.grid_latest.subscribe()
     }
 }

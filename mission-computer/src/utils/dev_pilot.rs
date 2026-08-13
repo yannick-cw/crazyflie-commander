@@ -1,9 +1,10 @@
 use crate::errors::Res;
 use crate::{
-    Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, OccupancyGrid,
-    Progress, TrajectoryId, Waypoint,
+    Abort, Autopilot, FlightMode, ManualControl, MissionItem, OccupancyGrid, TrajectoryId, Waypoint,
 };
-use datalink::domain_types::{BatteryLevel, Meters, MetersPerSecond, Telemetry, VehicleHealth};
+use datalink::domain_types::{
+    BatteryLevel, Meters, MetersPerSecond, MissionStatus, Progress, Telemetry, VehicleHealth,
+};
 use futures::Stream;
 use std::time::Duration;
 use tokio::sync::broadcast::Receiver;
@@ -80,57 +81,31 @@ impl Autopilot for DevPilot {
         receiver
     }
 
-    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
-        let (_, receiver) = watch::channel(OccupancyGrid::new());
-        receiver
-    }
-
-    fn mission_status(&self) -> watch::Receiver<MissionStatus> {
-        let (sender, receiver) = watch::channel(MissionStatus::Running(None));
+    fn status(&self) -> Receiver<MissionStatus> {
+        let (sender, receiver) = broadcast::channel(64);
         spawn(async move {
             loop {
                 let mut ticks = time::interval(Duration::from_millis(2000));
-                let commands = [
-                    MissionItem::Takeoff {
-                        height: Default::default(),
-                        duration: Default::default(),
-                    },
-                    MissionItem::MoveToWaypoint {
-                        x: Default::default(),
-                        y: Default::default(),
-                        z: Default::default(),
-                        duration: Default::default(),
-                    },
-                    MissionItem::MoveToWaypoint {
-                        x: Default::default(),
-                        y: Default::default(),
-                        z: Default::default(),
-                        duration: Default::default(),
-                    },
-                    MissionItem::MoveToWaypoint {
-                        x: Default::default(),
-                        y: Default::default(),
-                        z: Default::default(),
-                        duration: Default::default(),
-                    },
-                    MissionItem::Land {
-                        duration: Default::default(),
-                    },
-                ];
+                let commands = ["Takeoff", "MoveToWaypoint", "Land"];
                 for (i, c) in commands.iter().enumerate() {
                     let progress = Progress {
-                        current_command: c.clone(),
+                        current_command: c.to_string(),
                         command_num: i,
                         total_commands: commands.len(),
                     };
                     sender.send(MissionStatus::Running(Some(progress))).unwrap();
                     ticks.tick().await;
                 }
-                sender.send(MissionStatus::Idle).unwrap();
+                let _ = sender.send(MissionStatus::Idle);
                 ticks.tick().await;
             }
         });
 
+        receiver
+    }
+
+    fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {
+        let (_, receiver) = watch::channel(OccupancyGrid::new());
         receiver
     }
 }

@@ -21,8 +21,7 @@ mod utils;
 
 pub use air_data_link::server;
 pub use control::autopilot::{
-    Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, Progress, Reason,
-    SetpointHover, TrajectoryId, Waypoint,
+    Abort, Autopilot, FlightMode, ManualControl, MissionItem, SetpointHover, TrajectoryId, Waypoint,
 };
 pub use control::crazyflie::CrazyPilot;
 pub use control::crazyflie::setup_link;

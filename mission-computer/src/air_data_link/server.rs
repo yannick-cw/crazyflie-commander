@@ -1,6 +1,8 @@
 use crate::Autopilot;
 use datalink::downlink::message::Msg;
-use datalink::downlink::{Message, VehicleHealth, VehicleState, stream_telemetry_server};
+use datalink::downlink::{
+    Message, MissionStatus, VehicleHealth, VehicleState, stream_telemetry_server,
+};
 use std::pin::Pin;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
@@ -34,7 +36,14 @@ impl<A: Autopilot + Send + Sync + 'static> stream_telemetry_server::StreamTeleme
                 msg: Some(Msg::Health(state)),
             });
 
-        let all_update = tele_stream.merge(health_stream);
+        let status_stream = BroadcastStream::new(self.autopilot.status())
+            .filter_map(Result::ok)
+            .map(MissionStatus::from)
+            .map(|status| Message {
+                msg: Some(Msg::Status(status)),
+            });
+
+        let all_update = tele_stream.merge(health_stream).merge(status_stream);
         Ok(Response::new(Box::pin(all_update.map(Ok))))
     }
 }

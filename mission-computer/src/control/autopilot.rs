@@ -7,7 +7,9 @@ use crate::occupancy::grid::OccupancyGrid;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
-use datalink::domain_types::{BatteryLevel, Meters, MetersPerSecond, Telemetry, VehicleHealth};
+use datalink::domain_types::{
+    BatteryLevel, Meters, MetersPerSecond, MissionStatus, Telemetry, VehicleHealth,
+};
 use derive_more::Add;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -164,28 +166,6 @@ impl MissionItem {
 )]
 pub struct TrajectoryId(pub u8);
 
-#[derive(Debug, Clone, PartialEq, Default, PartialOrd, Serialize, Deserialize)]
-pub enum MissionStatus {
-    #[default]
-    Idle,
-    Running(Option<Progress>),
-    Aborted(Reason),
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub enum Reason {
-    Landing,
-    HardStop,
-    LowBattery,
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct Progress {
-    pub current_command: MissionItem,
-    pub command_num: usize,
-    pub total_commands: usize,
-}
-
 #[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct SetpointHover {
     pub vx: MetersPerSecond,
@@ -256,11 +236,12 @@ pub trait Autopilot {
         &self,
         commands: impl Stream<Item = ManualControl> + Send,
     ) -> impl Future<Output = Res<()>> + Send;
-    // emits latest telemetry - is updates every 10ms
+    // emits telemetry - is updates every 10ms
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
-    // emits latest health - is updates every 1s
+    // emits health - is updates every 1s
     fn health(&self) -> broadcast::Receiver<VehicleHealth>;
+    // emits mission status - is updates every 100ms
+    fn status(&self) -> broadcast::Receiver<MissionStatus>;
     // emits latest telemetry - is updates every 10ms
     fn latest_grid(&self) -> watch::Receiver<OccupancyGrid>;
-    fn mission_status(&self) -> watch::Receiver<MissionStatus>;
 }

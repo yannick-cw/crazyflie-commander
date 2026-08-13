@@ -1,5 +1,8 @@
-use crate::downlink::VehicleState;
+use crate::downlink::MissionStatus as RawStatus;
+use crate::downlink::mission_status::aborted::Reason as RawReason;
+use crate::downlink::mission_status::running::Progress as RawProgress;
 use crate::downlink::{VehicleHealth as RawHealth, vehicle_health};
+use crate::downlink::{VehicleState, mission_status};
 use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -163,6 +166,109 @@ impl From<VehicleState> for Telemetry {
             range_right: Meters(value.range_right),
             range_left: Meters(value.range_left),
             range_up: Meters(value.range_up),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, PartialOrd, Serialize, Deserialize)]
+pub enum MissionStatus {
+    #[default]
+    Idle,
+    Running(Option<Progress>),
+    Aborted(Reason),
+}
+
+impl From<MissionStatus> for RawStatus {
+    fn from(value: MissionStatus) -> Self {
+        Self {
+            status: Some(match value {
+                MissionStatus::Idle => mission_status::Status::Idle(mission_status::Idle {}),
+                MissionStatus::Running(progress) => {
+                    mission_status::Status::Running(mission_status::Running {
+                        p: progress.map(|p| p.into()),
+                    })
+                }
+                MissionStatus::Aborted(reason) => {
+                    mission_status::Status::Aborted(mission_status::Aborted {
+                        reason: mission_status::aborted::Reason::from(reason).into(),
+                    })
+                }
+            }),
+        }
+    }
+}
+
+impl From<RawStatus> for MissionStatus {
+    fn from(value: RawStatus) -> Self {
+        match value.status {
+            None => MissionStatus::Idle,
+            Some(mission_status::Status::Idle(_)) => MissionStatus::Idle,
+            Some(mission_status::Status::Running(running)) => {
+                MissionStatus::Running(running.p.map(|p| p.into()))
+            }
+            Some(mission_status::Status::Aborted(aborted)) => {
+                MissionStatus::Aborted(aborted.reason().into())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct Progress {
+    pub current_command: String,
+    pub command_num: usize,
+    pub total_commands: usize,
+}
+
+impl From<Progress> for RawProgress {
+    fn from(
+        Progress {
+            current_command,
+            command_num,
+            total_commands,
+        }: Progress,
+    ) -> Self {
+        Self {
+            current_command,
+            command_num: command_num as u32,
+            total_commands: total_commands as u32,
+        }
+    }
+}
+
+impl From<RawProgress> for Progress {
+    fn from(value: RawProgress) -> Self {
+        Self {
+            current_command: value.current_command,
+            command_num: value.command_num.try_into().unwrap(),
+            total_commands: value.total_commands.try_into().unwrap(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub enum Reason {
+    Landing,
+    HardStop,
+    LowBattery,
+}
+
+impl From<RawReason> for Reason {
+    fn from(value: RawReason) -> Self {
+        match value {
+            RawReason::Landing => Reason::Landing,
+            RawReason::HardStop => Reason::HardStop,
+            RawReason::LowBattery => Reason::LowBattery,
+        }
+    }
+}
+
+impl From<Reason> for RawReason {
+    fn from(value: Reason) -> Self {
+        match value {
+            Reason::Landing => RawReason::Landing,
+            Reason::HardStop => RawReason::HardStop,
+            Reason::LowBattery => RawReason::LowBattery,
         }
     }
 }

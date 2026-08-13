@@ -36,9 +36,12 @@ message VehicleHealth {
 
 message MissionStatus {
   message Running {
-    string current_command = 1;
-    uint32 command_num = 2;
-    uint32 total_commands = 3;
+    message Progress {
+      string current_command = 1;
+      uint32 command_num = 2;
+      uint32 total_commands = 3;
+    }
+    Progress p = 1;
   }
   message Aborted {
     enum Reason {
@@ -48,8 +51,9 @@ message MissionStatus {
     }
     Reason reason = 1;
   }
+  message Idle {}
   oneof status {
-    string idle = 1;
+    Idle idle = 1;
     Running running = 2;
     Aborted aborted = 3;
   }

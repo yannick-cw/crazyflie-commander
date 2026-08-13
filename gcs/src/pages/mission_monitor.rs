@@ -3,9 +3,10 @@ use crate::pages::mission_monitor::Msg::{
 };
 use Msg::{MissionResult, MissionUpdate};
 use crossterm::event::{KeyCode, KeyEvent};
+use datalink::domain_types::{MissionStatus, Reason};
 use futures::{TryFutureExt, TryStreamExt, stream};
 use mission_computer::errors::{MissionError, Res};
-use mission_computer::{Abort, Autopilot, MissionItem, Reason};
+use mission_computer::{Abort, Autopilot, MissionItem};
 use ratatea::Cmd;
 use tokio::sync::oneshot;
 use tokio_stream::StreamExt;
@@ -17,7 +18,7 @@ pub struct Model {
     pub mission: Vec<MissionItem>,
     pub name: String,
     pub abort_sender: Option<oneshot::Sender<Abort>>,
-    pub mission_status: mission_computer::MissionStatus,
+    pub mission_status: MissionStatus,
     pub link_mode: ExecutionMode,
 }
 impl Model {
@@ -26,14 +27,14 @@ impl Model {
             mission,
             name,
             abort_sender: None,
-            mission_status: mission_computer::MissionStatus::Idle,
+            mission_status: MissionStatus::Idle,
             link_mode: ExecutionMode::Online,
         }
     }
 
     pub fn trajectory_upload_available(&self) -> bool {
-        let grounded = self.mission_status == mission_computer::MissionStatus::Idle
-            || self.mission_status == mission_computer::MissionStatus::Aborted(Reason::Landing);
+        let grounded = self.mission_status == MissionStatus::Idle
+            || self.mission_status == MissionStatus::Aborted(Reason::Landing);
         self.mission.iter().any(MissionItem::can_upload_trajectory) && grounded
     }
 
@@ -66,7 +67,7 @@ pub enum Msg {
     MissionResult,
     SafeLand,
     EmergencyAbort,
-    MissionUpdate(mission_computer::MissionStatus),
+    MissionUpdate(MissionStatus),
     ExitPage,
     ToggleLinkMode,
     MissionUploaded(Res<Vec<MissionItem>>),
@@ -145,8 +146,8 @@ fn abort_mission(model: &mut Model, signal: Abort) -> Cmd<Msg> {
 }
 
 pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {
-    let grounded = s.mission_status == mission_computer::MissionStatus::Idle
-        || s.mission_status == mission_computer::MissionStatus::Aborted(Reason::Landing);
+    let grounded = s.mission_status == MissionStatus::Idle
+        || s.mission_status == MissionStatus::Aborted(Reason::Landing);
 
     match k.code {
         KeyCode::Char('l') if k.is_press() => Cmd::pure(SafeLand),
@@ -157,8 +158,7 @@ pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {
             if k.is_press()
                 && matches!(
                     s.mission_status,
-                    mission_computer::MissionStatus::Idle
-                        | mission_computer::MissionStatus::Aborted(_)
+                    MissionStatus::Idle | MissionStatus::Aborted(_)
                 ) =>
         {
             Cmd::pure(ExitPage)

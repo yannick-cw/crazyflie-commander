@@ -237,7 +237,7 @@ impl<U: Autopilot> Ratatea for Program<U> {
                 WatchStream::new(self.command_unit.latest_grid().clone())
                     .map(|g| Msg::GridUpdate(Box::new(g)))
                     .boxed(),
-                WatchStream::new(self.command_unit.mission_status().clone())
+                WatchStream::new(self.vehicle_link.latest_status.subscribe())
                     .map(|update| Msg::MissionExecution(MissionUpdate(update)))
                     .boxed(),
             ]
