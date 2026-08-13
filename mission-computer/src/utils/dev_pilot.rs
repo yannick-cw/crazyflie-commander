@@ -3,9 +3,10 @@ use crate::{
     Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, OccupancyGrid,
     Progress, TrajectoryId, Waypoint,
 };
-use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
+use datalink::domain_types::{BatteryLevel, Meters, MetersPerSecond, Telemetry, VehicleHealth};
 use futures::Stream;
 use std::time::Duration;
+use tokio::sync::broadcast::Receiver;
 use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
 use tokio::{select, spawn, time};
@@ -61,8 +62,20 @@ impl Autopilot for DevPilot {
                 tele.x_v += MetersPerSecond(j());
                 tele.y_v += MetersPerSecond(j());
                 tele.yaw_degrees += j();
-                sender.send(tele).unwrap();
+                let _ = sender.send(tele);
             }
+        });
+        receiver
+    }
+
+    fn health(&self) -> Receiver<VehicleHealth> {
+        let (sender, receiver) = broadcast::channel(64);
+        spawn(async move {
+            let _ = sender.send(VehicleHealth::default());
+            sleep(Duration::from_millis(1000)).await;
+            let _ = sender.send(VehicleHealth {
+                battery_level: BatteryLevel::Low,
+            });
         });
         receiver
     }

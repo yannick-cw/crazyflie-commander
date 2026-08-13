@@ -1,14 +1,16 @@
 syntax = "proto3";
 
-package wire;
+package downlink;
 
-message WireTelemetry {
-  enum BatteryLevel {
-    BATTERY_LEVEL_UNSPECIFIED = 0;
-    Low = 1;
-    High = 2;
+message Message {
+  oneof msg {
+    VehicleState state = 1;
+    VehicleHealth health = 2;
+    MissionStatus status = 3;
   }
+}
 
+message VehicleState {
   float x = 1;
   float y = 2;
   float z = 3;
@@ -16,10 +18,39 @@ message WireTelemetry {
   float y_v = 5;
   float z_v = 6;
   float yaw_degrees = 7;
-  BatteryLevel   battery_level = 9;
   float range_front = 10;
   float range_back = 11;
   float range_right = 12;
   float range_left = 13;
   float range_up = 14;
+}
+
+message VehicleHealth {
+  enum BatteryLevel {
+    BATTERY_LEVEL_UNSPECIFIED = 0;
+    Low = 1;
+    High = 2;
+  }
+  BatteryLevel   battery_level = 1;
+}
+
+message MissionStatus {
+  message Running {
+    string current_command = 1;
+    uint32 command_num = 2;
+    uint32 total_commands = 3;
+  }
+  message Aborted {
+    enum Reason {
+      Landing = 0;
+      HardStop = 1;
+      LowBattery = 2;
+    }
+    Reason reason = 1;
+  }
+  oneof status {
+    string idle = 1;
+    Running running = 2;
+    Aborted aborted = 3;
+  }
 }

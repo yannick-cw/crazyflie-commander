@@ -1,6 +1,6 @@
 use crate::Autopilot;
-use datalink::wire;
-use datalink::wire::WireTelemetry;
+use datalink::downlink::message::Msg;
+use datalink::downlink::{Message, VehicleHealth, VehicleState, stream_telemetry_server};
 use std::pin::Pin;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
@@ -11,20 +11,30 @@ pub struct MissionServer<A: Autopilot> {
 }
 
 #[tonic::async_trait]
-impl<A: Autopilot + Send + Sync + 'static> wire::stream_telemetry_server::StreamTelemetry
+impl<A: Autopilot + Send + Sync + 'static> stream_telemetry_server::StreamTelemetry
     for MissionServer<A>
 {
-    type StreamTelemetryStream = Pin<Box<dyn Stream<Item = Result<WireTelemetry, Status>> + Send>>;
+    type StreamTelemetryStream = Pin<Box<dyn Stream<Item = Result<Message, Status>> + Send>>;
 
     async fn stream_telemetry(
         &self,
         _request: Request<()>,
     ) -> Result<Response<Self::StreamTelemetryStream>, Status> {
-        Ok(Response::new(Box::pin(
-            BroadcastStream::new(self.autopilot.telemetry())
-                .filter_map(Result::ok)
-                .map(WireTelemetry::from)
-                .map(Ok),
-        )))
+        let tele_stream = BroadcastStream::new(self.autopilot.telemetry())
+            .filter_map(Result::ok)
+            .map(VehicleState::from)
+            .map(|state| Message {
+                msg: Some(Msg::State(state)),
+            });
+
+        let health_stream = BroadcastStream::new(self.autopilot.health())
+            .filter_map(Result::ok)
+            .map(VehicleHealth::from)
+            .map(|state| Message {
+                msg: Some(Msg::Health(state)),
+            });
+
+        let all_update = tele_stream.merge(health_stream);
+        Ok(Response::new(Box::pin(all_update.map(Ok))))
     }
 }

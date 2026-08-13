@@ -198,7 +198,6 @@ mod tests {
             x_v: Default::default(),
             y_v: Default::default(),
             yaw_degrees: 0.0,
-            battery_level: Default::default(),
             range_front: Meters(0.5),
             range_back: Meters(0.8),
             range_right: Meters(32.0),

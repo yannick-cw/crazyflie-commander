@@ -1,4 +1,6 @@
 use crate::setup::spawn_server;
+use datalink::downlink::Message;
+use datalink::downlink::message::Msg;
 use std::error::Error;
 use tokio_stream::StreamExt;
 
@@ -8,8 +10,29 @@ async fn consume_telemetry() -> Result<(), Box<dyn Error>> {
 
     let x = client.stream_telemetry(()).await?.into_inner();
 
-    let some_tele: Result<Vec<_>, _> = x.take(5).collect().await;
+    let downlink_res: Result<Vec<_>, _> = x.take(5).collect().await;
+    let res = downlink_res?;
 
-    assert_eq!(some_tele?.len(), 5);
+    let contains_health_data = res.iter().any(|msg| {
+        matches!(
+            msg,
+            Message {
+                msg: Some(Msg::Health(_))
+            }
+        )
+    });
+
+    let contains_state_data = res.iter().any(|msg| {
+        matches!(
+            msg,
+            Message {
+                msg: Some(Msg::State(_))
+            }
+        )
+    });
+
+    assert!(contains_health_data);
+    assert!(contains_state_data);
+    assert_eq!(res.len(), 5);
     Ok(())
 }

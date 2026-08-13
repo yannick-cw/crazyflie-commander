@@ -1,4 +1,4 @@
-use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
+use datalink::domain_types::{Meters, MetersPerSecond, Telemetry, VehicleHealth};
 use futures::Stream;
 use mission_computer::errors::Res;
 use mission_computer::{
@@ -48,6 +48,10 @@ impl Autopilot for DevPilot {
     }
 
     fn telemetry(&self) -> Receiver<Telemetry> {
+        todo!()
+    }
+
+    fn health(&self) -> Receiver<VehicleHealth> {
         todo!()
     }
 

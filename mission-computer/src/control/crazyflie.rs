@@ -1,6 +1,6 @@
 use crate::control::autopilot::{
     Abort, Autopilot, FlightMode, ManualControl, MissionItem, MissionStatus, SetpointHover,
-    TrajectoryId, Waypoint, from_log_data,
+    TrajectoryId, Waypoint, health_from_log, telemetry_from_log,
 };
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
@@ -15,9 +15,10 @@ use crate::utils::errors::Res;
 use crate::{Progress, Reason};
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
-use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
+use datalink::domain_types::{Meters, MetersPerSecond, Telemetry, VehicleHealth};
 use futures::{Stream, StreamExt, TryFutureExt};
 use std::time::Duration;
+use tokio::sync::broadcast::Receiver;
 use tokio::sync::{broadcast, watch};
 use tokio::time::{MissedTickBehavior, sleep};
 use tokio::{select, time};
@@ -58,16 +59,11 @@ pub async fn setup_link() -> Res<CrazyPilot> {
     cf.param.set_lossy("kalman.resetEstimation", 0.0).await?;
 
     let mut log_block_telemetry = cf.log.create_block().await?;
-    let mut log_block_range_bat = cf.log.create_block().await?;
+    let mut log_block_range = cf.log.create_block().await?;
+    let mut log_block_health = cf.log.create_block().await?;
+    log_block_health.add_variable(PM_STATE).await?;
 
-    let range_bat_logs = [
-        RANGE_FRONT,
-        RANGE_BACK,
-        RANGE_LEFT,
-        RANGE_RIGHT,
-        RANGE_UP,
-        PM_STATE,
-    ];
+    let range_logs = [RANGE_FRONT, RANGE_BACK, RANGE_LEFT, RANGE_RIGHT, RANGE_UP];
 
     let state_estimate_logs = [
         STATE_ESTIMATE_X,
@@ -82,24 +78,32 @@ pub async fn setup_link() -> Res<CrazyPilot> {
         log_block_telemetry.add_variable(var_name).await?;
     }
 
-    for var_name in range_bat_logs {
-        log_block_range_bat.add_variable(var_name).await?;
+    for var_name in range_logs {
+        log_block_range.add_variable(var_name).await?;
     }
 
     let log_stream_telemetry = log_block_telemetry
         .start(LogPeriod::from_millis(10).unwrap())
         .await?;
 
-    let log_stream_range_bat = log_block_range_bat
+    let log_stream_range = log_block_range
         .start(LogPeriod::from_millis(10).unwrap())
         .await?;
 
+    let log_stream_health = log_block_health
+        .start(LogPeriod::from_millis(1000).unwrap())
+        .await?;
+
     let (tx, _rx) = broadcast::channel(64);
+    let (health_sender, _h_r) = broadcast::channel(64);
+    let (health_watch, _) = watch::channel(VehicleHealth::default());
     let (sender_tx, r) = watch::channel(Telemetry::default());
     let (sender_grid, _) = watch::channel(OccupancyGrid::new());
     let local_sender_tx = tx.clone();
     let local_watch_tx = sender_tx.clone();
     let local_grid_sender = sender_grid.clone();
+    let local_health_sender = health_sender.clone();
+    let local_watch_health = health_watch.clone();
 
     tokio::spawn(async move {
         let mut ticks = time::interval(Duration::from_millis(50));
@@ -109,28 +113,37 @@ pub async fn setup_link() -> Res<CrazyPilot> {
             ticks.tick().await;
             let telemetry = *r.borrow();
             update_grid(&mut grid, &telemetry);
-            let _ = local_grid_sender.send(grid.clone());
+            let _ = local_grid_sender.send_replace(grid.clone());
         }
     });
     tokio::spawn(async move {
         loop {
             let (tele_block, battery_block) =
-                tokio::join!(log_stream_telemetry.next(), log_stream_range_bat.next());
+                tokio::join!(log_stream_telemetry.next(), log_stream_range.next());
             match (tele_block, battery_block) {
-                (Ok(tele_log), Ok(bat_log)) => {
-                    let telemetry = from_log_data(&tele_log, &bat_log);
+                (Ok(tele_log), Ok(range_log)) => {
+                    let telemetry = telemetry_from_log(&tele_log, &range_log);
                     let _ = local_sender_tx.send(telemetry);
-                    let _ = local_watch_tx.send(telemetry);
+                    let _ = local_watch_tx.send_replace(telemetry);
                 }
                 _ => break,
             }
         }
     });
+    tokio::spawn(async move {
+        while let Ok(health_update) = log_stream_health.next().await {
+            let health = health_from_log(&health_update);
+            let _ = local_health_sender.send(health);
+            let _ = local_watch_health.send_replace(health);
+        }
+    });
     let (status_sender, _) = watch::channel(MissionStatus::Idle);
     let mission_status = status_sender.clone();
+
     Ok(CrazyPilot {
-        vehicle: Vehicle::new(cf, sender_tx.subscribe()),
+        vehicle: Vehicle::new(cf, sender_tx.subscribe(), health_watch.subscribe()),
         telemetry_sender: tx,
+        health_sender,
         grid_latest: sender_grid,
         mission_status,
     })
@@ -143,6 +156,7 @@ pub async fn setup_link() -> Res<CrazyPilot> {
 pub struct CrazyPilot {
     vehicle: Vehicle,
     telemetry_sender: broadcast::Sender<Telemetry>,
+    health_sender: broadcast::Sender<VehicleHealth>,
     grid_latest: watch::Sender<OccupancyGrid>,
     mission_status: watch::Sender<MissionStatus>,
 }
@@ -234,8 +248,8 @@ impl Autopilot for CrazyPilot {
         mission: Vec<MissionItem>,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
-        let mut telemetry_rx = self.vehicle.telemetry.clone();
-        let is_low_bat = telemetry_rx.wait_for(Telemetry::is_low_bat).map_ok(|_| ());
+        let mut health_rx = self.vehicle.health.clone();
+        let is_low_bat = health_rx.wait_for(VehicleHealth::is_low_bat).map_ok(|_| ());
 
         // runs mission or aborts on keypress or on low battery
         select! {
@@ -287,7 +301,7 @@ impl Autopilot for CrazyPilot {
     async fn fly(&self, commands: impl Stream<Item = ManualControl>) -> Res<()> {
         tokio::pin!(commands);
 
-        let mut telemetry_rx = self.vehicle.telemetry.clone();
+        let mut health_tx = self.vehicle.health.clone();
         let too_close_rx = self.vehicle.telemetry.clone();
         let mut ticks = time::interval(Duration::from_millis(20));
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -311,7 +325,7 @@ impl Autopilot for CrazyPilot {
                 },
                 // the `map_ok` is crucial - without it the sender towards telemetry_rx is blocked for the entire return_home
                 // as the select arm is basically just the future that would still have the ref to telemetry open
-                _ = telemetry_rx.wait_for(Telemetry::is_low_bat).map_ok(|_|()) => {
+                _ = health_tx.wait_for(VehicleHealth::is_low_bat).map_ok(|_|()) => {
                     info!("Low battery - returning home");
                     self.vehicle.return_home().await?;
                     break;
@@ -355,6 +369,10 @@ impl Autopilot for CrazyPilot {
 
     fn telemetry(&self) -> broadcast::Receiver<Telemetry> {
         self.telemetry_sender.subscribe()
+    }
+
+    fn health(&self) -> Receiver<VehicleHealth> {
+        self.health_sender.subscribe()
     }
 
     fn latest_grid(&self) -> watch::Receiver<OccupancyGrid> {

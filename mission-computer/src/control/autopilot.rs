@@ -7,7 +7,7 @@ use crate::occupancy::grid::OccupancyGrid;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
-use datalink::domain_types::{BatteryLevel, Meters, MetersPerSecond, Telemetry};
+use datalink::domain_types::{BatteryLevel, Meters, MetersPerSecond, Telemetry, VehicleHealth};
 use derive_more::Add;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -21,35 +21,46 @@ pub enum Abort {
     Land,
 }
 
-pub fn from_log_data(tele_log: &LogData, range_bat_log: &LogData) -> Telemetry {
-    let get = |name: &str, l: &LogData| {
-        l.data
-            .get(name)
-            .map(Value::to_f64_lossy)
-            .unwrap_or_else(|| {
-                warn!("Could not unpack log var {name} in log data {l:?}");
-                0.0
-            }) as f32
-    };
+fn get_log_by_name(name: &str, l: &LogData) -> f32 {
+    l.data
+        .get(name)
+        .map(Value::to_f64_lossy)
+        .unwrap_or_else(|| {
+            warn!("Could not unpack log var {name} in log data {l:?}");
+            0.0
+        }) as f32
+}
+
+pub fn telemetry_from_log(tele_log: &LogData, range_log: &LogData) -> Telemetry {
     Telemetry {
-        x: Meters(get(STATE_ESTIMATE_X, tele_log)),
-        y: Meters(get(STATE_ESTIMATE_Y, tele_log)),
-        z: Meters(get(STATE_ESTIMATE_Z, tele_log)),
-        x_v: MetersPerSecond(get(STATE_ESTIMATE_VX, tele_log)),
-        y_v: MetersPerSecond(get(STATE_ESTIMATE_VY, tele_log)),
+        x: Meters(get_log_by_name(STATE_ESTIMATE_X, tele_log)),
+        y: Meters(get_log_by_name(STATE_ESTIMATE_Y, tele_log)),
+        z: Meters(get_log_by_name(STATE_ESTIMATE_Z, tele_log)),
+        x_v: MetersPerSecond(get_log_by_name(STATE_ESTIMATE_VX, tele_log)),
+        y_v: MetersPerSecond(get_log_by_name(STATE_ESTIMATE_VY, tele_log)),
         // z_v: MetersPerSecond(get("stateEstimate.vz")),
-        yaw_degrees: get(STATE_ESTIMATE_YAW, tele_log),
-        battery_level: if get(PM_STATE, range_bat_log) >= 3.0 {
+        yaw_degrees: get_log_by_name(STATE_ESTIMATE_YAW, tele_log),
+        // battery_level: if get(PM_STATE, ragene_log) >= 3.0 {
+        //     BatteryLevel::Low
+        // } else {
+        //     BatteryLevel::High
+        // },
+        // if 0.0 range causes problems this could be the cause on missing log data
+        range_front: Meters(get_log_by_name(RANGE_FRONT, range_log) / 1000.0),
+        range_back: Meters(get_log_by_name(RANGE_BACK, range_log) / 1000.0),
+        range_left: Meters(get_log_by_name(RANGE_LEFT, range_log) / 1000.0),
+        range_right: Meters(get_log_by_name(RANGE_RIGHT, range_log) / 1000.0),
+        range_up: Meters(get_log_by_name(RANGE_UP, range_log) / 1000.0),
+    }
+}
+
+pub fn health_from_log(health_log: &LogData) -> VehicleHealth {
+    VehicleHealth {
+        battery_level: if get_log_by_name(PM_STATE, health_log) >= 3.0 {
             BatteryLevel::Low
         } else {
             BatteryLevel::High
         },
-        // if 0.0 range causes problems this could be the cause on missing log data
-        range_front: Meters(get(RANGE_FRONT, range_bat_log) / 1000.0),
-        range_back: Meters(get(RANGE_BACK, range_bat_log) / 1000.0),
-        range_left: Meters(get(RANGE_LEFT, range_bat_log) / 1000.0),
-        range_right: Meters(get(RANGE_RIGHT, range_bat_log) / 1000.0),
-        range_up: Meters(get(RANGE_UP, range_bat_log) / 1000.0),
     }
 }
 
@@ -247,6 +258,8 @@ pub trait Autopilot {
     ) -> impl Future<Output = Res<()>> + Send;
     // emits latest telemetry - is updates every 10ms
     fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
+    // emits latest health - is updates every 1s
+    fn health(&self) -> broadcast::Receiver<VehicleHealth>;
     // emits latest telemetry - is updates every 10ms
     fn latest_grid(&self) -> watch::Receiver<OccupancyGrid>;
     fn mission_status(&self) -> watch::Receiver<MissionStatus>;

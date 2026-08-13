@@ -16,7 +16,6 @@ fn test_telemetry() -> Vec<Telemetry> {
             x_v: Default::default(),
             y_v: Default::default(),
             yaw_degrees: 0.0,
-            battery_level: Default::default(),
             range_front: Default::default(),
             range_back: Default::default(),
             range_right: Default::default(),

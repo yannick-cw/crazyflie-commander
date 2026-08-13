@@ -1,5 +1,5 @@
-use crate::wire;
-use crate::wire::WireTelemetry;
+use crate::downlink::VehicleState;
+use crate::downlink::{VehicleHealth as RawHealth, vehicle_health};
 use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -49,6 +49,38 @@ impl Display for MetersPerSecond {
         write!(f, "{}m/s", self.0)
     }
 }
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct VehicleHealth {
+    pub battery_level: BatteryLevel,
+}
+impl VehicleHealth {
+    pub fn is_low_bat(&self) -> bool {
+        self.battery_level == BatteryLevel::Low
+    }
+}
+
+impl From<VehicleHealth> for RawHealth {
+    fn from(value: VehicleHealth) -> Self {
+        RawHealth {
+            battery_level: match value.battery_level {
+                BatteryLevel::Low => vehicle_health::BatteryLevel::Low.into(),
+                BatteryLevel::High => vehicle_health::BatteryLevel::High.into(),
+            },
+        }
+    }
+}
+
+impl From<RawHealth> for VehicleHealth {
+    fn from(value: RawHealth) -> Self {
+        VehicleHealth {
+            battery_level: match value.battery_level() {
+                vehicle_health::BatteryLevel::High => BatteryLevel::High,
+                _ => BatteryLevel::Low,
+            }, //todo fix
+        }
+    }
+}
 #[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Telemetry {
     pub x: Meters,
@@ -58,7 +90,6 @@ pub struct Telemetry {
     pub y_v: MetersPerSecond,
     // pub z_v: MetersPerSecond,
     pub yaw_degrees: f32,
-    pub battery_level: BatteryLevel,
     pub range_front: Meters,
     pub range_back: Meters,
     pub range_right: Meters,
@@ -66,9 +97,6 @@ pub struct Telemetry {
     pub range_up: Meters,
 }
 impl Telemetry {
-    pub fn is_low_bat(&self) -> bool {
-        self.battery_level == BatteryLevel::Low
-    }
     pub fn x(&self) -> f32 {
         self.x.0
     }
@@ -102,9 +130,9 @@ pub enum BatteryLevel {
     High,
 }
 
-impl From<Telemetry> for WireTelemetry {
+impl From<Telemetry> for VehicleState {
     fn from(value: Telemetry) -> Self {
-        WireTelemetry {
+        VehicleState {
             x: value.x.0,
             y: value.y.0,
             z: value.z.0,
@@ -112,10 +140,6 @@ impl From<Telemetry> for WireTelemetry {
             y_v: value.y_v.0,
             z_v: 0.0,
             yaw_degrees: value.yaw_degrees,
-            battery_level: match value.battery_level {
-                BatteryLevel::Low => wire::wire_telemetry::BatteryLevel::Low.into(),
-                BatteryLevel::High => wire::wire_telemetry::BatteryLevel::High.into(),
-            },
             range_front: value.range_front.0,
             range_back: value.range_back.0,
             range_right: value.range_right.0,
@@ -125,8 +149,8 @@ impl From<Telemetry> for WireTelemetry {
     }
 }
 
-impl From<WireTelemetry> for Telemetry {
-    fn from(value: WireTelemetry) -> Self {
+impl From<VehicleState> for Telemetry {
+    fn from(value: VehicleState) -> Self {
         Telemetry {
             x: Meters(value.x),
             y: Meters(value.y),
@@ -134,10 +158,6 @@ impl From<WireTelemetry> for Telemetry {
             x_v: MetersPerSecond(value.x_v),
             y_v: MetersPerSecond(value.y_v),
             yaw_degrees: value.yaw_degrees,
-            battery_level: match value.battery_level() {
-                wire::wire_telemetry::BatteryLevel::High => BatteryLevel::High,
-                _ => BatteryLevel::Low,
-            },
             range_front: Meters(value.range_front),
             range_back: Meters(value.range_back),
             range_right: Meters(value.range_right),

@@ -1,4 +1,4 @@
-use datalink::wire::stream_telemetry_server::StreamTelemetryServer;
+use datalink::downlink::stream_telemetry_server::StreamTelemetryServer;
 use mission_computer::dev_pilot::DevPilot;
 use mission_computer::server::MissionServer;
 use mission_computer::setup_link;

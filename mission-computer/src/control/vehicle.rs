@@ -9,7 +9,7 @@ use crazyflie_lib::subsystems::high_level_commander::{
 };
 use crazyflie_lib::subsystems::memory::{MemoryType, TrajectoryMemory};
 use crazyflie_lib::{Crazyflie, Error};
-use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
+use datalink::domain_types::{Meters, MetersPerSecond, Telemetry, VehicleHealth};
 use std::fmt::{Debug, Formatter};
 use std::ops::Add;
 use std::time::Duration;
@@ -22,6 +22,7 @@ pub struct Vehicle {
     cf: Crazyflie,
     trajectory_state: Mutex<TrajectoryState>,
     pub telemetry: watch::Receiver<Telemetry>,
+    pub health: watch::Receiver<VehicleHealth>,
 }
 impl Debug for Vehicle {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -39,10 +40,15 @@ struct TrajectoryState {
 }
 
 impl Vehicle {
-    pub fn new(cf: Crazyflie, telemetry: watch::Receiver<Telemetry>) -> Self {
+    pub fn new(
+        cf: Crazyflie,
+        telemetry: watch::Receiver<Telemetry>,
+        health: watch::Receiver<VehicleHealth>,
+    ) -> Self {
         Self {
             cf,
             telemetry,
+            health,
             trajectory_state: Mutex::default(),
         }
     }
@@ -402,7 +408,6 @@ mod tests {
             x_v: Default::default(),
             y_v: Default::default(),
             yaw_degrees: 0.0,
-            battery_level: Default::default(),
             range_front: Default::default(),
             range_back: Default::default(),
             range_right: Default::default(),

@@ -4,7 +4,7 @@ use crate::program::{Model, State};
 use crate::view::occupancy_map::OccupancyMap;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
-use datalink::domain_types::{Meters, Telemetry};
+use datalink::domain_types::{Meters, Telemetry, VehicleHealth};
 use mission_computer::{MissionItem, MissionStatus, Setpoint};
 use ratatui::{
     Frame,
@@ -33,6 +33,7 @@ const MAX_SPEED_SETTING: f32 = 2.0;
 
 pub fn view(model: &Model, frame: &mut Frame) {
     let t = &model.telemetry;
+    let v = &model.health;
     let area = frame.area();
 
     let mission = match &model.state {
@@ -117,7 +118,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
     frame.render_widget(OccupancyMap::new(&model.grid, bounds), map_inner);
     frame.render_widget(position_panel(t), pos_area);
     frame.render_widget(velocity_panel(t), vel_area);
-    frame.render_widget(state_panel(t), state_area);
+    frame.render_widget(state_panel(t, v), state_area);
     frame.render_widget(ranges_panel(t), ranges_area);
     if let State::MissionExecution(s) = &model.state {
         match s.link_mode {
@@ -495,8 +496,8 @@ fn velocity_panel(t: &Telemetry) -> Paragraph<'static> {
     .block(panel(" VELOCITY "))
 }
 
-fn state_panel(t: &Telemetry) -> Paragraph<'static> {
-    let (label, color) = if t.is_low_bat() {
+fn state_panel(t: &Telemetry, v: &VehicleHealth) -> Paragraph<'static> {
+    let (label, color) = if v.is_low_bat() {
         (" LOW ", DANGER)
     } else {
         (" OK ", OK)

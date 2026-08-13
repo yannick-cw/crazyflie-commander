@@ -1,5 +1,5 @@
-use datalink::wire::stream_telemetry_client::StreamTelemetryClient;
-use datalink::wire::stream_telemetry_server::StreamTelemetryServer;
+use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
+use datalink::downlink::stream_telemetry_server::StreamTelemetryServer;
 use mission_computer::dev_pilot::DevPilot;
 use mission_computer::server::MissionServer;
 use std::error::Error;
