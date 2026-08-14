@@ -21,12 +21,10 @@ pub struct OccupancyGrid(Vec<Vec<Cell>>);
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct Cell {
     pub ln_ods: f32,
-    pub x: Meters,
-    pub y: Meters,
 }
 impl From<Cell> for datalink::domain_types::Cell {
-    fn from(Cell { ln_ods, x, y }: Cell) -> Self {
-        Self { ln_ods, x, y }
+    fn from(Cell { ln_ods }: Cell) -> Self {
+        Self { ln_ods }
     }
 }
 // l(x) = log (p(x) / 1-p(x)) is my l(m_i|z_1-t,x_1:t) <= cell occupied given all measures and pos
@@ -34,24 +32,27 @@ impl Cell {
     fn p_to_ln(p: f32) -> f32 {
         (p / (1. - p)).ln()
     }
+    fn clamped_update(&mut self, add: f32) {
+        let save_new = (self.ln_ods + Self::p_to_ln(add)).clamp(-5.0, 5.0);
+        self.ln_ods = save_new;
+    }
 
-    // TODO make sure never growth above +- 5 to keep adjustable on drift
     fn with_occ(mut self) -> Cell {
         // 0.8 is prob that is added if I assume occupied
         let p_occ = 0.8_f32;
-        self.ln_ods += Self::p_to_ln(p_occ);
+        self.clamped_update(p_occ);
         self
     }
     fn with_free(mut self) -> Cell {
         // 0.3 is prob that is added if I assume free
         let p_free = 0.3_f32;
-        self.ln_ods += Self::p_to_ln(p_free);
+        self.clamped_update(p_free);
         self
     }
     fn with_occluded(mut self) -> Cell {
         // 0.6 is prob that is added if I assume close behind occupied
         let p_occluded = 0.6_f32;
-        self.ln_ods += Self::p_to_ln(p_occluded);
+        self.clamped_update(p_occluded);
         self
     }
 }
@@ -66,37 +67,31 @@ impl Default for OccupancyGrid {
 
 impl OccupancyGrid {
     pub fn new() -> OccupancyGrid {
-        let mut cells = [[Cell::default(); GRID_SIZE]; GRID_SIZE]
-            .map(|i| i.to_vec())
-            .to_vec();
-        cells.iter_mut().enumerate().for_each(|(y, inner)| {
-            inner.iter_mut().enumerate().for_each(|(x, value)| {
-                // missing shift to middle of cell...
-                // move (0,0) drone pos into middle of grid for ease of use
-                let cell_mx =
-                    (Meters(x as f32) * CELL_SIZE.0) - Meters(GRID_SIZE as f32 * CELL_SIZE.0 / 2.0);
-                let cell_my =
-                    (Meters(y as f32) * CELL_SIZE.0) - Meters(GRID_SIZE as f32 * CELL_SIZE.0 / 2.0);
-
-                value.x = cell_mx;
-                value.y = cell_my;
-            });
-        });
-
-        OccupancyGrid(cells)
+        OccupancyGrid(
+            [[Cell::default(); GRID_SIZE]; GRID_SIZE]
+                .map(|i| i.to_vec())
+                .to_vec(),
+        )
     }
 
     pub fn inner(self) -> Vec<Vec<Cell>> {
         self.0
     }
 
+    // F takes the cell and x and y positions
     fn update_each<F>(&mut self, f: F)
     where
-        F: Fn(Cell) -> Cell,
+        F: Fn(Cell, Meters, Meters) -> Cell,
     {
-        self.0.iter_mut().for_each(|rows| {
-            rows.iter_mut().for_each(|cell| {
-                let new_cell = f(*cell);
+        self.0.iter_mut().enumerate().for_each(|(y, rows)| {
+            rows.iter_mut().enumerate().for_each(|(x, cell)| {
+                // missing shift to middle of cell...
+                // move (0,0) drone pos into middle of grid for ease of use
+                let cell_mx =
+                    (Meters(x as f32) * CELL_SIZE.0) - Meters(GRID_SIZE as f32 * CELL_SIZE.0 / 2.0);
+                let cell_my =
+                    (Meters(y as f32) * CELL_SIZE.0) - Meters(GRID_SIZE as f32 * CELL_SIZE.0 / 2.0);
+                let new_cell = f(*cell, cell_mx, cell_my);
                 *cell = new_cell;
             })
         });
@@ -140,9 +135,9 @@ pub fn update_grid(
         return;
     }
 
-    grid.update_each(|cell| {
-        let dx = cell.x - x;
-        let dy = cell.y - y;
+    grid.update_each(|cell, cell_x, cell_y| {
+        let dx = cell_x - x;
+        let dy = cell_y - y;
 
         let distance = Meters((dx.0.powi(2) + dy.0.powi(2)).sqrt());
         let is_cell_in_distance = distance <= Meters(1.5);

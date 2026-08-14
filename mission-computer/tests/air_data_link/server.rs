@@ -1,5 +1,7 @@
 use crate::setup::spawn_server;
 use datalink::downlink::message::Msg;
+use datalink::downlink::occupancy_grid;
+use std::assert_matches;
 use std::error::Error;
 use tokio_stream::StreamExt;
 
@@ -30,8 +32,6 @@ async fn consume_payload() -> Result<(), Box<dyn Error>> {
     let grid = client.stream_payload(()).await?.into_inner();
 
     let grid_res: Result<Vec<_>, _> = grid.take(1).collect().await;
-    let res = grid_res?;
-
-    assert_eq!(res[0].lists.len(), 120);
+    assert_matches!(&grid_res?[0].msg, Some(occupancy_grid::Msg::Keyframe(k)) if k.lists.len() == 120);
     Ok(())
 }

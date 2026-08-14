@@ -2,7 +2,8 @@ use crate::Autopilot;
 use datalink::domain_types::Cell;
 use datalink::downlink::message::Msg;
 use datalink::downlink::{
-    Message, MissionStatus, OccupancyGrid, VehicleHealth, VehicleState, stream_telemetry_server,
+    KeyframeGrid, Message, MissionStatus, OccupancyGrid, VehicleHealth, VehicleState,
+    occupancy_grid, stream_telemetry_server,
 };
 use std::pin::Pin;
 use tokio_stream::wrappers::BroadcastStream;
@@ -56,13 +57,13 @@ impl<A: Autopilot + Send + Sync + 'static> stream_telemetry_server::StreamTeleme
     ) -> Result<Response<Self::StreamPayloadStream>, Status> {
         let grid_stream = BroadcastStream::new(self.autopilot.grid())
             .filter_map(Result::ok)
-            .map(|g| {
-                OccupancyGrid::from(
+            .map(|g| OccupancyGrid {
+                msg: Some(occupancy_grid::Msg::Keyframe(KeyframeGrid::from(
                     g.inner()
                         .into_iter()
                         .map(|inner| inner.into_iter().map(|c| Cell::from(c)).collect())
                         .collect::<Vec<_>>(),
-                )
+                ))),
             });
 
         Ok(Response::new(Box::pin(grid_stream.map(Ok))))

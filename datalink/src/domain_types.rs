@@ -1,8 +1,8 @@
+use crate::downlink::KeyframeGrid as RawKeyframe;
 use crate::downlink::MissionStatus as RawStatus;
-use crate::downlink::OccupancyGrid as RawOccupancyGrid;
+use crate::downlink::keyframe_grid::ListOfCells;
 use crate::downlink::mission_status::aborted::Reason as RawReason;
 use crate::downlink::mission_status::running::Progress as RawProgress;
-use crate::downlink::occupancy_grid::{Cell as RawCell, ListOfCells};
 use crate::downlink::{VehicleHealth as RawHealth, vehicle_health};
 use crate::downlink::{VehicleState, mission_status};
 use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
@@ -276,41 +276,23 @@ impl From<Reason> for RawReason {
 }
 
 pub type OccupancyGrid = Vec<Vec<Cell>>;
-impl From<OccupancyGrid> for RawOccupancyGrid {
+impl From<OccupancyGrid> for RawKeyframe {
     fn from(value: OccupancyGrid) -> Self {
         Self {
             lists: value
                 .into_iter()
                 .map(|cells| ListOfCells {
-                    cell: cells.into_iter().map(|c| c.into()).collect(),
+                    quantized_odds: cells
+                        .into_iter()
+                        // this maps -5.0..5.0 to -50..50
+                        .map(|c| (c.ln_ods * 10.0).round() as i32)
+                        .collect(),
                 })
                 .collect(),
         }
     }
 }
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Deserialize)]
 pub struct Cell {
     pub ln_ods: f32,
-    pub x: Meters,
-    pub y: Meters,
-}
-
-impl From<Cell> for RawCell {
-    fn from(Cell { ln_ods, x, y }: Cell) -> Self {
-        Self {
-            ln_ods,
-            x: x.0,
-            y: y.0,
-        }
-    }
-}
-
-impl From<RawCell> for Cell {
-    fn from(RawCell { ln_ods, x, y }: RawCell) -> Self {
-        Self {
-            ln_ods,
-            x: Meters(x),
-            y: Meters(y),
-        }
-    }
 }

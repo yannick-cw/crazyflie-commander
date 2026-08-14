@@ -2,14 +2,27 @@ syntax = "proto3";
 
 package downlink;
 
+// TODO: send either full grid (each 2 as keyframe) OR only diff the 9 other times
 message OccupancyGrid {
-  message Cell {
-    float ln_ods = 1;
-    float x = 2;
-    float y = 3;
+  oneof msg {
+    KeyframeGrid keyframe = 1;
+    ChangedCells changes = 2;
   }
+}
+
+message KeyframeGrid {
   message ListOfCells {
-    repeated Cell cell = 1;
+    // mapped to -50..50
+    repeated  sint32 quantized_odds = 1;
   }
   repeated ListOfCells lists = 1;
+}
+
+message ChangedCells {
+  message ChangedCell {
+    sint32 ln_ods = 1;
+    int32 i = 2;
+    int32 j = 3;
+  }
+  repeated ChangedCell cell = 1;
 }

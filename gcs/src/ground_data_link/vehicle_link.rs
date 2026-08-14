@@ -1,6 +1,7 @@
-use datalink::domain_types::{MissionStatus, OccupancyGrid, Telemetry, VehicleHealth};
-use datalink::downlink;
+use datalink::domain_types::{Cell, MissionStatus, Telemetry, VehicleHealth};
+use datalink::downlink::occupancy_grid;
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
+use datalink::{domain_types, downlink};
 use tokio::sync::watch;
 use tokio_stream::StreamExt;
 use tonic::transport::{Channel, Uri};
@@ -60,14 +61,28 @@ pub async fn datalink_client(address: Uri) -> color_eyre::Result<VehicleLink> {
 
         while let Some(res) = stream.next().await {
             match res {
-                Ok(grid) => {
+                Ok(downlink::OccupancyGrid {
+                    msg: Some(occupancy_grid::Msg::Keyframe(keyframe)),
+                }) => {
                     local_grid.send_replace(
-                        grid.lists
+                        keyframe
+                            .lists
                             .into_iter()
-                            .map(|l| l.cell.into_iter().map(|c| c.into()).collect())
+                            .map(|l| {
+                                l.quantized_odds
+                                    .into_iter()
+                                    .map(|quantized_odds| Cell {
+                                        ln_ods: quantized_odds as f32 / 10.0,
+                                    })
+                                    .collect()
+                            })
                             .collect(),
                     );
                 }
+                Ok(downlink::OccupancyGrid {
+                    msg: Some(occupancy_grid::Msg::Changes(_)),
+                }) => {}
+                Ok(downlink::OccupancyGrid { msg: None }) => {}
                 Err(err) => {
                     error!("failed data link {:?}", err);
                 }
@@ -87,5 +102,5 @@ pub struct VehicleLink {
     pub latest_telemetry: watch::Sender<Telemetry>,
     pub latest_health: watch::Sender<VehicleHealth>,
     pub latest_status: watch::Sender<MissionStatus>,
-    pub latest_grid: watch::Sender<OccupancyGrid>,
+    pub latest_grid: watch::Sender<domain_types::OccupancyGrid>,
 }

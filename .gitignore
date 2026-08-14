@@ -12,6 +12,8 @@ scala-rust-cheatsheet.md
 logs/
 tmp_tkn
 
+mission-computer/tests/unoptimised_grid.jsonl
+
 # Devenv
 .devenv*
 devenv.local.nix

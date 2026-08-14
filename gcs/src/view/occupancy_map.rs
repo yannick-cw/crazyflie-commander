@@ -12,6 +12,9 @@ use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 use std::ops::RangeInclusive;
 // AI GENERATED
 
+/// Side length of one grid cell in metres. Must match the grid in `mission_computer`,
+/// which no longer sends per-cell coordinates.
+const CELL_SIZE_M: f64 = 0.05;
 /// Log-odds magnitude below which a cell counts as "no real evidence yet" and stays blank.
 /// 0.4 is roughly p = 0.6 / 0.4, i.e. about one observation.
 const EVIDENCE: f32 = 0.4;
@@ -44,11 +47,11 @@ impl Widget for OccupancyMap<'_> {
         if area.is_empty() || cells.len() < 2 {
             return;
         }
-        // grid geometry, read off the cells themselves so it stays in step with the grid
+        // Cells no longer carry their position, so the geometry is derived: the grid is
+        // centred on the drone, so its origin follows from its extent.
         let count = cells.len();
-        let origin = f64::from(cells[0][0].x.0);
-        let cell_m = f64::from(cells[0][1].x.0) - origin;
-        let to_index = |m: f64| ((m - origin) / cell_m).floor();
+        let origin = -(count as f64 * CELL_SIZE_M / 2.0);
+        let to_index = |m: f64| ((m - origin) / CELL_SIZE_M).floor();
 
         let (w, h) = (f64::from(area.width), f64::from(area.height));
         let (half_h, half_v) = self.bounds;
