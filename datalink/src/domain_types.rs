@@ -1,5 +1,6 @@
 use crate::downlink::KeyframeGrid as RawKeyframe;
 use crate::downlink::MissionStatus as RawStatus;
+use crate::downlink::changed_cells::ChangedCell;
 use crate::downlink::keyframe_grid::ListOfCells;
 use crate::downlink::mission_status::aborted::Reason as RawReason;
 use crate::downlink::mission_status::running::Progress as RawProgress;
@@ -295,4 +296,32 @@ impl From<OccupancyGrid> for RawKeyframe {
 #[derive(Debug, Default, Copy, Clone, PartialEq, Deserialize)]
 pub struct Cell {
     pub ln_ods: f32,
+}
+
+impl From<(Cell, usize, usize)> for ChangedCell {
+    fn from((cell, i, j): (Cell, usize, usize)) -> Self {
+        Self {
+            quantized_odds: (cell.ln_ods * 10.0).round() as i32,
+            i: i as i32,
+            j: j as i32,
+        }
+    }
+}
+
+impl From<i32> for Cell {
+    fn from(quantized_ods: i32) -> Self {
+        Cell {
+            ln_ods: quantized_ods as f32 / 10.0,
+        }
+    }
+}
+
+impl From<RawKeyframe> for OccupancyGrid {
+    fn from(keyframe: RawKeyframe) -> Self {
+        keyframe
+            .lists
+            .into_iter()
+            .map(|l| l.quantized_odds.into_iter().map(i32::into).collect())
+            .collect()
+    }
 }

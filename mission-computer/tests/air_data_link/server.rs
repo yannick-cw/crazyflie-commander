@@ -35,3 +35,25 @@ async fn consume_payload() -> Result<(), Box<dyn Error>> {
     assert_matches!(&grid_res?[0].msg, Some(occupancy_grid::Msg::Keyframe(k)) if k.lists.len() == 120);
     Ok(())
 }
+
+#[tokio::test]
+async fn initial_keyframe_grid_then_differences_then_keyframe() -> Result<(), Box<dyn Error>> {
+    let mut client = spawn_server().await?;
+
+    let grid = client.stream_payload(()).await?.into_inner();
+
+    let grid_res: Result<Vec<_>, _> = grid.take(15).collect().await;
+    let rec_keyframes = grid_res
+        .clone()?
+        .iter()
+        .filter(|msg| matches!(msg.msg, Some(occupancy_grid::Msg::Keyframe(_))))
+        .count();
+    let rec_updates = grid_res?
+        .iter()
+        .filter(|msg| matches!(msg.msg, Some(occupancy_grid::Msg::Changes(_))))
+        .count();
+
+    assert_eq!(2, rec_keyframes);
+    assert_eq!(13, rec_updates);
+    Ok(())
+}

@@ -1,7 +1,8 @@
+use datalink::compression_adapter::decompressed_grid_stream;
 use datalink::domain_types::{Cell, MissionStatus, Telemetry, VehicleHealth};
-use datalink::downlink::occupancy_grid;
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
 use datalink::{domain_types, downlink};
+use futures::TryStreamExt;
 use tokio::sync::watch;
 use tokio_stream::StreamExt;
 use tonic::transport::{Channel, Uri};
@@ -53,40 +54,18 @@ pub async fn datalink_client(address: Uri) -> color_eyre::Result<VehicleLink> {
     });
 
     tokio::spawn(async move {
-        let mut stream = payload_client
-            .stream_payload(())
-            .await
-            .expect("could not subscribe to payload")
-            .into_inner();
+        let mut stream = decompressed_grid_stream(
+            payload_client
+                .stream_payload(())
+                .await
+                .expect("could not subscribe to payload")
+                .into_inner()
+                .inspect_err(|err| error!("Error streaming grid with status {}", err))
+                .filter_map(|res| res.ok()),
+        );
 
         while let Some(res) = stream.next().await {
-            match res {
-                Ok(downlink::OccupancyGrid {
-                    msg: Some(occupancy_grid::Msg::Keyframe(keyframe)),
-                }) => {
-                    local_grid.send_replace(
-                        keyframe
-                            .lists
-                            .into_iter()
-                            .map(|l| {
-                                l.quantized_odds
-                                    .into_iter()
-                                    .map(|quantized_odds| Cell {
-                                        ln_ods: quantized_odds as f32 / 10.0,
-                                    })
-                                    .collect()
-                            })
-                            .collect(),
-                    );
-                }
-                Ok(downlink::OccupancyGrid {
-                    msg: Some(occupancy_grid::Msg::Changes(_)),
-                }) => {}
-                Ok(downlink::OccupancyGrid { msg: None }) => {}
-                Err(err) => {
-                    error!("failed data link {:?}", err);
-                }
-            }
+            local_grid.send_replace(res);
         }
     });
 

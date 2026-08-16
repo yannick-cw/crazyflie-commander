@@ -20,9 +20,9 @@ message KeyframeGrid {
 
 message ChangedCells {
   message ChangedCell {
-    sint32 ln_ods = 1;
+    sint32 quantized_odds = 1;
     int32 i = 2;
     int32 j = 3;
   }
-  repeated ChangedCell cell = 1;
+  repeated ChangedCell cells = 1;
 }

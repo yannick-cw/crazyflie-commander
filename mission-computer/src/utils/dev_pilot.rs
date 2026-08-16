@@ -105,8 +105,14 @@ impl Autopilot for DevPilot {
     }
 
     fn grid(&self) -> Receiver<OccupancyGrid> {
-        let (s, receiver) = broadcast::channel(64);
-        let _ = s.send(OccupancyGrid::default());
+        let (sender, receiver) = broadcast::channel(64);
+        spawn(async move {
+            loop {
+                let mut ticks = time::interval(Duration::from_millis(100));
+                let _ = sender.send(OccupancyGrid::default());
+                ticks.tick().await;
+            }
+        });
         receiver
     }
 }
