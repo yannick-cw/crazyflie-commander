@@ -1,5 +1,5 @@
 use datalink::compression_adapter::decompressed_grid_stream;
-use datalink::domain_types::{Cell, MissionStatus, Telemetry, VehicleHealth};
+use datalink::domain_types::{MissionStatus, Telemetry, VehicleHealth};
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
 use datalink::{domain_types, downlink};
 use futures::TryStreamExt;

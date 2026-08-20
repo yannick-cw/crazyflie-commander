@@ -1,5 +1,5 @@
+use crate::domain_types::OccupancyGrid;
 use crate::downlink::changed_cells::ChangedCell;
-use crate::downlink::occupancy_grid::Msg;
 use crate::downlink::{ChangedCells, KeyframeGrid, occupancy_grid};
 use crate::{domain_types, downlink};
 use tonic::codegen::tokio_stream::{Stream, StreamExt};
@@ -36,16 +36,7 @@ pub fn compressed_grid_stream<S: Stream<Item = domain_types::OccupancyGrid>>(
             Some(LastSeenGrid {
                 grid, diffs_since, ..
             }) => {
-                let zipped_rows = grid.iter().zip(next_grid.clone()).enumerate();
-                let changed_cells: Vec<ChangedCell> = zipped_rows
-                    .flat_map(|(i, (old_cell_row, new_cell_row))| {
-                        let zipped_cells = old_cell_row.iter().zip(new_cell_row).enumerate();
-                        zipped_cells.filter_map(move |(j, (old_cell_at_ij, new_cell_at_ij))| {
-                            (old_cell_at_ij.ln_ods != new_cell_at_ij.ln_ods)
-                                .then_some((new_cell_at_ij, i, j).into())
-                        })
-                    })
-                    .collect();
+                let changed_cells = grid_to_changed_cells(&next_grid, grid);
 
                 *diffs_since += 1;
                 *grid = next_grid;
@@ -58,6 +49,20 @@ pub fn compressed_grid_stream<S: Stream<Item = domain_types::OccupancyGrid>>(
         .map(|msg| downlink::OccupancyGrid { msg: Some(msg) })
 }
 
+pub fn grid_to_changed_cells(next_grid: &OccupancyGrid, grid: &OccupancyGrid) -> Vec<ChangedCell> {
+    let zipped_rows = grid.iter().zip(next_grid.clone()).enumerate();
+    let changed_cells: Vec<ChangedCell> = zipped_rows
+        .flat_map(|(i, (old_cell_row, new_cell_row))| {
+            let zipped_cells = old_cell_row.iter().zip(new_cell_row).enumerate();
+            zipped_cells.filter_map(move |(j, (old_cell_at_ij, new_cell_at_ij))| {
+                (old_cell_at_ij.ln_ods != new_cell_at_ij.ln_ods)
+                    .then_some((new_cell_at_ij, i, j).into())
+            })
+        })
+        .collect();
+    changed_cells
+}
+
 pub fn decompressed_grid_stream<S: Stream<Item = downlink::OccupancyGrid>>(
     grid_stream: S,
 ) -> impl Stream<Item = domain_types::OccupancyGrid> {
@@ -65,12 +70,12 @@ pub fn decompressed_grid_stream<S: Stream<Item = downlink::OccupancyGrid>>(
     grid_stream
         .filter_map(|msg| msg.msg)
         .filter_map(move |update| match (update, &current_grid) {
-            (Msg::Keyframe(keyframe), _) => {
+            (occupancy_grid::Msg::Keyframe(keyframe), _) => {
                 let occupancy_grid = Some(keyframe.into());
                 current_grid = occupancy_grid.clone();
                 occupancy_grid
             }
-            (Msg::Changes(changed_cells), Some(to_update_grid)) => {
+            (occupancy_grid::Msg::Changes(changed_cells), Some(to_update_grid)) => {
                 let mut to_update_grid: domain_types::OccupancyGrid = to_update_grid.clone();
                 for ChangedCell {
                     quantized_odds,
