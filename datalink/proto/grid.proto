@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package downlink;
 
-// TODO: send either full grid (each 2 as keyframe) OR only diff the 9 other times
 message OccupancyGrid {
   oneof msg {
     KeyframeGrid keyframe = 1;

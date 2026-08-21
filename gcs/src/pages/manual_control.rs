@@ -5,8 +5,8 @@ use crate::pages::manual_control::Msg::{
 };
 use Msg::{SendNextMove, TakeOffDone};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use datalink::domain_types::{Meters, MetersPerSecond};
-use mission_computer::{ManualControl, Setpoint, SetpointHover};
+use datalink::domain_types::{Meters, MetersPerSecond, Setpoint};
+use mission_computer::{ManualControl, SetpointHover};
 use ratatea::Cmd;
 use serde::{Deserialize, Serialize};
 use std::rc::Rc;

@@ -45,7 +45,7 @@ async fn main() -> color_eyre::Result<()> {
         }),
     };
 
-    let vehicle_link = datalink_client(config.datalink.address).await?;
+    let vehicle_link = Rc::new(datalink_client(config.datalink.address).await?);
 
     info!("Starting up....");
     match setup_link().await {

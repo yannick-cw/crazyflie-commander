@@ -1,5 +1,4 @@
-use crate::control::autopilot::Waypoint;
-use datalink::domain_types::{Meters, MetersPerSecond};
+use datalink::domain_types::{Meters, MetersPerSecond, Waypoint};
 use std::time::Duration;
 
 pub fn inverse_v_when_oob(

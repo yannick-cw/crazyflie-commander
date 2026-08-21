@@ -1,9 +1,6 @@
-use crate::control::autopilot::FlightMode::{BodyFrame, Strafe};
-use crate::control::autopilot::MissionItem::{
-    BilliardBox, Land, MoveToWaypoint, Orbit, SmoothPath, Takeoff,
-};
-use crate::control::autopilot::{BilliardParams, MissionItem, Waypoint};
-use datalink::domain_types::{Meters, MetersPerSecond};
+use datalink::domain_types::FlightMode::{BodyFrame, Strafe};
+use datalink::domain_types::MissionItem::*;
+use datalink::domain_types::*;
 use std::time::Duration;
 
 pub fn haus_nikolaus() -> Vec<MissionItem> {

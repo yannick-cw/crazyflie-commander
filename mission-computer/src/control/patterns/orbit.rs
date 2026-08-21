@@ -1,8 +1,8 @@
-use crate::control::low_level_engine::{Setpoint, Step, StepState};
+use crate::control::low_level_engine::{Step, StepState};
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::Res;
 use crate::utils::math::{OrbitPos, calc_orbit_points};
-use datalink::domain_types::{Meters, Telemetry};
+use datalink::domain_types::{Meters, Setpoint, Telemetry};
 use std::time::Duration;
 use std::vec;
 use tracing::info;

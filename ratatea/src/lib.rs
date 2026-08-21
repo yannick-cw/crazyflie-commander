@@ -60,6 +60,7 @@
 //!     Hello,
 //! }
 //! ``
+
 use crossterm::event::{
     Event, EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
@@ -86,6 +87,10 @@ impl<Msg: 'static> Cmd<Msg> {
     /// A command that does nothing.
     pub fn none() -> Cmd<Msg> {
         Cmd(Vec::new())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     /// Creates a new [`Cmd`] and chains the [`Msg`] to the result.

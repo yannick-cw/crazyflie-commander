@@ -1,9 +1,8 @@
 use crate::errors::Res;
-use crate::{
-    Abort, Autopilot, FlightMode, ManualControl, MissionItem, OccupancyGrid, TrajectoryId, Waypoint,
-};
+use crate::{Abort, Autopilot, ManualControl, OccupancyGrid};
 use datalink::domain_types::{
-    BatteryLevel, Meters, MetersPerSecond, MissionStatus, Progress, Telemetry, VehicleHealth,
+    BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus, Progress,
+    Telemetry, TrajectoryId, VehicleHealth, Waypoint,
 };
 use futures::Stream;
 use std::time::Duration;

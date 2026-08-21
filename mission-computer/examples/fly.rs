@@ -1,9 +1,10 @@
 use crossterm::event::{Event, EventStream, KeyCode};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use datalink::domain_types::MissionItem;
 use futures::StreamExt;
 use mission_computer::errors::Res;
 use mission_computer::flight_paths::orbit;
-use mission_computer::{Abort, Autopilot, MissionItem, setup_link};
+use mission_computer::{Abort, Autopilot, setup_link};
 use std::future;
 
 #[tokio::main]

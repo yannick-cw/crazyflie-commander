@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package uplink;
+
+import "google/protobuf/duration.proto";
+
+message Mission {
+  repeated MissionItem mission_item = 1;
+}
+
+message MissionItem {
+  oneof item {
+    Takeoff takeoff = 1;
+    Move move = 2;
+    MoveToWaypoint move_to_waypoint = 3;
+    SmoothPath smooth_path = 4;
+    Setpoints setpoints = 5;
+    BilliardParams billiard_box = 6;
+    Orbit orbit = 7;
+    Hover hover = 8;
+    Land land = 9;
+    OnVehicleTrajectory on_vehicle_trajectory = 10;
+  }
+}
+
+message Takeoff {
+  float height = 1;
+  google.protobuf.Duration duration = 2;
+}
+
+message Move {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  google.protobuf.Duration duration = 4;
+}
+
+message MoveToWaypoint {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  google.protobuf.Duration duration = 4;
+}
+
+message SmoothPath {
+  repeated Waypoint waypoints = 1;
+  float speed = 2;
+  FlightMode flight_mode = 3;
+}
+
+message Waypoint {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+enum FlightMode {
+  UNSPECIFIED = 0;
+  STRAFE = 1;
+  BODY_FRAME = 2;
+}
+
+message Setpoints {
+  repeated Setpoint points = 1;
+}
+
+message Setpoint {
+  oneof point {
+    VelocityPoint velocity = 1;
+    PositionPoint position = 2;
+  }
+}
+
+message VelocityPoint {
+  float vx = 1;
+  float vy = 2;
+  float vz = 3;
+  float yaw_rate = 4;
+}
+
+message PositionPoint {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  float yaw_degrees = 4;
+}
+
+message BilliardParams {
+  float bl_x = 1;
+  float bl_y = 2;
+  float bl_z = 3;
+  float tr_x = 4;
+  float tr_y = 5;
+  float tr_z = 6;
+  float vx = 7;
+  float vy = 8;
+  float vz = 9;
+  google.protobuf.Duration hold_for = 10;
+}
+
+message Orbit {
+  float radius = 1;
+  google.protobuf.Duration orbital_period = 2;
+  uint64 orbits = 3;
+  float z = 4;
+}
+
+message Hover {
+  google.protobuf.Duration duration = 1;
+}
+
+message Land {
+  google.protobuf.Duration duration = 1;
+}
+
+message OnVehicleTrajectory {
+  uint32 id = 1;
+  google.protobuf.Duration duration = 2;
+  MissionItem original_command = 3;
+}

@@ -1,7 +1,6 @@
-use crate::control::autopilot::{FlightMode, Waypoint};
 use crate::errors::Res;
 use crazyflie_lib::subsystems::memory::{Poly, Poly4D};
-use datalink::domain_types::MetersPerSecond;
+use datalink::domain_types::{FlightMode, MetersPerSecond, Waypoint};
 use std::time::Duration;
 use tracing::info;
 

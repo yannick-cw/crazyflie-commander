@@ -3,7 +3,7 @@ use crate::pages::mission_select::Msg::*;
 use crate::program::NavigationMessage;
 use crate::program::NavigationMessage::{Down, Select, Up};
 use crossterm::event::{KeyCode, KeyEvent};
-use mission_computer::MissionItem;
+use datalink::domain_types::MissionItem;
 use ratatea::Cmd;
 use std::rc::Rc;
 

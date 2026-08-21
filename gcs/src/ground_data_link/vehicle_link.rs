@@ -1,8 +1,11 @@
 use datalink::compression_adapter::decompressed_grid_stream;
-use datalink::domain_types::{MissionStatus, Telemetry, VehicleHealth};
+use datalink::domain_types::{MissionItem, MissionStatus, Telemetry, VehicleHealth};
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
-use datalink::{domain_types, downlink};
+use datalink::uplink::uplink_service_client::UplinkServiceClient;
+use datalink::{domain_types, downlink, uplink};
 use futures::TryStreamExt;
+use mission_computer::errors::MissionError::UploadError;
+use mission_computer::errors::Res;
 use tokio::sync::watch;
 use tokio_stream::StreamExt;
 use tonic::transport::{Channel, Uri};
@@ -11,7 +14,8 @@ use tracing::error;
 pub async fn datalink_client(address: Uri) -> color_eyre::Result<VehicleLink> {
     let channel = Channel::builder(address).connect().await?;
     let mut payload_client = StreamTelemetryClient::new(channel.clone());
-    let mut telemetry_client = StreamTelemetryClient::new(channel);
+    let mut telemetry_client = StreamTelemetryClient::new(channel.clone());
+    let uplink_client = UplinkServiceClient::new(channel);
     let (latest_telemetry, _) = watch::channel(Telemetry::default());
     let local_sender = latest_telemetry.clone();
     let (latest_health, _) = watch::channel(VehicleHealth::default());
@@ -74,6 +78,7 @@ pub async fn datalink_client(address: Uri) -> color_eyre::Result<VehicleLink> {
         latest_health,
         latest_status,
         latest_grid,
+        uplink_client,
     })
 }
 
@@ -82,4 +87,22 @@ pub struct VehicleLink {
     pub latest_health: watch::Sender<VehicleHealth>,
     pub latest_status: watch::Sender<MissionStatus>,
     pub latest_grid: watch::Sender<domain_types::OccupancyGrid>,
+    uplink_client: UplinkServiceClient<Channel>,
+}
+
+impl VehicleLink {
+    pub async fn submit_mission(&self, mission: Vec<MissionItem>) -> Res<()> {
+        let mut client = self.uplink_client.clone();
+        let wire_mission = uplink::Mission {
+            mission_item: mission
+                .into_iter()
+                .map(uplink::MissionItem::from)
+                .collect::<Vec<_>>(),
+        };
+        client
+            .execute_mission(wire_mission)
+            .await
+            .map_err(|err| UploadError(format!("Could not upload mission {:?}", err)))?;
+        Ok(())
+    }
 }

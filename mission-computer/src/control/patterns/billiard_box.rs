@@ -1,9 +1,8 @@
-use crate::control::autopilot::BilliardParams;
-use crate::control::low_level_engine::{Setpoint, Step, StepState};
+use crate::control::low_level_engine::{Step, StepState};
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::Res;
 use crate::utils::math::{SpeedVec, inverse_v_when_oob};
-use datalink::domain_types::Meters;
+use datalink::domain_types::{BilliardParams, Meters, Setpoint};
 use std::time::Duration;
 use tokio::time::sleep;
 

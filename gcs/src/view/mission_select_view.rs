@@ -1,7 +1,7 @@
 use crate::pages::mission_select::Model;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, selectable, shell};
-use mission_computer::MissionItem;
+use datalink::domain_types::MissionItem;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
@@ -9,7 +9,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::Paragraph,
 };
-
 // AI GENERATED
 
 pub fn view(model: &Model, frame: &mut Frame) {

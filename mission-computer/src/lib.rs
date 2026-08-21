@@ -20,12 +20,9 @@ mod occupancy;
 mod utils;
 
 pub use air_data_link::server;
-pub use control::autopilot::{
-    Abort, Autopilot, FlightMode, ManualControl, MissionItem, SetpointHover, TrajectoryId, Waypoint,
-};
+pub use control::autopilot::{Abort, Autopilot, ManualControl, SetpointHover};
 pub use control::crazyflie::CrazyPilot;
 pub use control::crazyflie::setup_link;
-pub use control::low_level_engine::Setpoint;
 pub use occupancy::grid::{Cell, OccupancyGrid};
 pub use utils::dev_pilot;
 pub use utils::errors;

@@ -1,0 +1,10 @@
+syntax = "proto3";
+import "mission_item.proto";
+import "google/protobuf/empty.proto";
+
+package uplink;
+
+service UplinkService {
+  // executes a pre-defined mission
+  rpc ExecuteMission (Mission) returns (google.protobuf.Empty) {}
+}

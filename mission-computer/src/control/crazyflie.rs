@@ -1,6 +1,5 @@
 use crate::control::autopilot::{
-    Abort, Autopilot, FlightMode, ManualControl, MissionItem, SetpointHover, TrajectoryId,
-    Waypoint, health_from_log, telemetry_from_log,
+    Abort, Autopilot, ManualControl, SetpointHover, health_from_log, telemetry_from_log,
 };
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
@@ -15,7 +14,8 @@ use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use datalink::domain_types::{
-    Meters, MetersPerSecond, MissionStatus, Progress, Reason, Telemetry, VehicleHealth,
+    FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus, Progress, Reason, Telemetry,
+    TrajectoryId, VehicleHealth, Waypoint,
 };
 use futures::{Stream, StreamExt, TryFutureExt};
 use std::time::Duration;
@@ -163,7 +163,6 @@ pub struct CrazyPilot {
 }
 
 impl CrazyPilot {
-    // TODO upload should happen before takeoff!! Not in the air - clean up link mode
     async fn start_mission(&self, mission: Vec<MissionItem>) -> Res<()> {
         let vehicle = &self.vehicle;
 

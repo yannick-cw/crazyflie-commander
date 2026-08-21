@@ -1,6 +1,7 @@
-use crate::control::low_level_engine::{Setpoint, Step, StepState};
+use crate::control::low_level_engine::{Step, StepState};
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::Res;
+use datalink::domain_types::Setpoint;
 use std::vec;
 
 pub async fn run_setpoints(points: Vec<Setpoint>, vehicle: &Vehicle) -> Res<()> {

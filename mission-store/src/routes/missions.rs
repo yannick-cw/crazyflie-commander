@@ -4,7 +4,7 @@ use anyhow::Context;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use mission_computer::MissionItem;
+use datalink::domain_types::MissionItem;
 use sqlx::PgPool;
 use sqlx::types::Uuid;
 use sqlx::types::chrono::Utc;

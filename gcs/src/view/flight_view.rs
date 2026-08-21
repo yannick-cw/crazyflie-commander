@@ -4,8 +4,9 @@ use crate::program::{Model, State};
 use crate::view::occupancy_map::OccupancyMap;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
-use datalink::domain_types::{Meters, MissionStatus, Telemetry, VehicleHealth};
-use mission_computer::{MissionItem, Setpoint};
+use datalink::domain_types::{
+    Meters, MissionItem, MissionStatus, Setpoint, Telemetry, VehicleHealth,
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},

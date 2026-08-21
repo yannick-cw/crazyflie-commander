@@ -1,9 +1,10 @@
-use datalink::domain_types::{Meters, MetersPerSecond, MissionStatus, Telemetry, VehicleHealth};
+use datalink::domain_types::{
+    FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus, Telemetry, TrajectoryId,
+    VehicleHealth, Waypoint,
+};
 use futures::Stream;
 use mission_computer::errors::Res;
-use mission_computer::{
-    Abort, Autopilot, FlightMode, MissionItem, OccupancyGrid, TrajectoryId, Waypoint,
-};
+use mission_computer::{Abort, Autopilot, OccupancyGrid};
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;

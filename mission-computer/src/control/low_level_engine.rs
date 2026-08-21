@@ -1,37 +1,5 @@
-use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
-use serde::{Deserialize, Serialize};
+use datalink::domain_types::{Setpoint, Telemetry};
 use std::time::Duration;
-
-/// A single target for the low-level commander, streamed at high rate.
-///
-/// [`VelocityPoint`](Self::VelocityPoint) sets a body-frame velocity.
-/// [`PositionPoint`](Self::PositionPoint) sets an absolute position relative to takeoff.
-/// Used to replay a recorded flight via [`crate::MissionItem::Setpoints`].
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub enum Setpoint {
-    VelocityPoint {
-        vx: MetersPerSecond,
-        vy: MetersPerSecond,
-        vz: MetersPerSecond,
-        yaw_rate: f32,
-    },
-    PositionPoint {
-        x: Meters,
-        y: Meters,
-        z: Meters,
-        yaw_degrees: f32,
-    },
-}
-impl Default for Setpoint {
-    fn default() -> Self {
-        Setpoint::PositionPoint {
-            x: Default::default(),
-            y: Default::default(),
-            z: Default::default(),
-            yaw_degrees: 0.0,
-        }
-    }
-}
 
 pub enum Step<S> {
     Continue(Setpoint, S),

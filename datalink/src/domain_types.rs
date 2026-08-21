@@ -6,9 +6,11 @@ use crate::downlink::mission_status::aborted::Reason as RawReason;
 use crate::downlink::mission_status::running::Progress as RawProgress;
 use crate::downlink::{VehicleHealth as RawHealth, vehicle_health};
 use crate::downlink::{VehicleState, mission_status};
+use crate::uplink;
 use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
 #[derive(
     Debug,
@@ -323,5 +325,347 @@ impl From<RawKeyframe> for OccupancyGrid {
             .into_iter()
             .map(|l| l.quantized_odds.into_iter().map(i32::into).collect())
             .collect()
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct Waypoint {
+    pub x: Meters,
+    pub y: Meters,
+    pub z: Meters,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum FlightMode {
+    Strafe,
+    BodyFrame,
+}
+
+#[derive(
+    Debug, Default, Copy, Eq, Ord, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize, Add,
+)]
+pub struct TrajectoryId(pub u8);
+
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct BilliardParams {
+    pub bl_x: Meters,
+    pub bl_y: Meters,
+    pub bl_z: Meters,
+    pub tr_x: Meters,
+    pub tr_y: Meters,
+    pub tr_z: Meters,
+    pub vx: MetersPerSecond,
+    pub vy: MetersPerSecond,
+    pub vz: MetersPerSecond,
+    pub hold_for: Duration,
+}
+
+/// A single target for the low-level commander, streamed at high rate.
+///
+/// [`VelocityPoint`](Self::VelocityPoint) sets a body-frame velocity.
+/// [`PositionPoint`](Self::PositionPoint) sets an absolute position relative to takeoff.
+/// Used to replay a recorded flight via [`crate::MissionItem::Setpoints`].
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub enum Setpoint {
+    VelocityPoint {
+        vx: MetersPerSecond,
+        vy: MetersPerSecond,
+        vz: MetersPerSecond,
+        yaw_rate: f32,
+    },
+    PositionPoint {
+        x: Meters,
+        y: Meters,
+        z: Meters,
+        yaw_degrees: f32,
+    },
+}
+impl Default for Setpoint {
+    fn default() -> Self {
+        Setpoint::PositionPoint {
+            x: Default::default(),
+            y: Default::default(),
+            z: Default::default(),
+            yaw_degrees: 0.0,
+        }
+    }
+}
+
+/// A single high-level flight instruction.
+///
+/// A mission is a list of `MissionItem`s executed by [`Autopilot::run_mission`].
+/// Positions are relative to the takeoff point unless a variant states otherwise.
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub enum MissionItem {
+    Takeoff {
+        height: Meters,
+        duration: Duration,
+    },
+    // move relative to the current position
+    Move {
+        x: Meters,
+        y: Meters,
+        z: Meters,
+        duration: Duration,
+    },
+    // move to a waypoint relative to the takeoff position
+    MoveToWaypoint {
+        x: Meters,
+        y: Meters,
+        z: Meters,
+        duration: Duration,
+    },
+    // smooth waypoint - relative to takeoff position
+    // important - first setpoint has to be the current position!
+    SmoothPath {
+        waypoints: Vec<Waypoint>,
+        speed: MetersPerSecond,
+        flight_mode: FlightMode,
+    },
+    Setpoints {
+        points: Vec<Setpoint>,
+    },
+    // fly a bouncing pattern in the rectangle define by bl tr
+    //   | ------- tr
+    //   |         |
+    //  bl ------- |
+    BilliardBox(BilliardParams),
+    Orbit {
+        radius: Meters,
+        orbital_period: Duration,
+        orbits: usize,
+        z: Meters,
+    },
+    Hover {
+        duration: Duration,
+    },
+    Land {
+        duration: Duration,
+    },
+    OnVehicleTrajectory {
+        id: TrajectoryId,
+        duration: Duration,
+        original_command: Box<MissionItem>,
+    },
+}
+
+impl MissionItem {
+    // currently only `Orbit` supports uploading trajectory
+    pub fn can_upload_trajectory(&self) -> bool {
+        matches!(
+            self,
+            MissionItem::Orbit { .. } | MissionItem::SmoothPath { .. }
+        )
+    }
+}
+
+impl From<MissionItem> for uplink::MissionItem {
+    fn from(value: MissionItem) -> Self {
+        use uplink::mission_item::Item;
+
+        let item = match value {
+            MissionItem::Takeoff { height, duration } => Item::Takeoff(uplink::Takeoff {
+                height: height.0,
+                duration: Some(duration.try_into().unwrap()),
+            }),
+            MissionItem::Move { x, y, z, duration } => Item::Move(uplink::Move {
+                x: x.0,
+                y: y.0,
+                z: z.0,
+                duration: Some(duration.try_into().unwrap()),
+            }),
+            MissionItem::MoveToWaypoint { x, y, z, duration } => {
+                Item::MoveToWaypoint(uplink::MoveToWaypoint {
+                    x: x.0,
+                    y: y.0,
+                    z: z.0,
+                    duration: Some(duration.try_into().unwrap()),
+                })
+            }
+            MissionItem::SmoothPath {
+                waypoints,
+                speed,
+                flight_mode,
+            } => Item::SmoothPath(uplink::SmoothPath {
+                waypoints: waypoints
+                    .into_iter()
+                    .map(|waypoint| uplink::Waypoint {
+                        x: waypoint.x.0,
+                        y: waypoint.y.0,
+                        z: waypoint.z.0,
+                    })
+                    .collect(),
+                speed: speed.0,
+                flight_mode: match flight_mode {
+                    FlightMode::Strafe => uplink::FlightMode::Strafe,
+                    FlightMode::BodyFrame => uplink::FlightMode::BodyFrame,
+                }
+                .into(),
+            }),
+            MissionItem::Setpoints { points } => Item::Setpoints(uplink::Setpoints {
+                points: points
+                    .into_iter()
+                    .map(|point| uplink::Setpoint {
+                        point: Some(match point {
+                            Setpoint::VelocityPoint {
+                                vx,
+                                vy,
+                                vz,
+                                yaw_rate,
+                            } => uplink::setpoint::Point::Velocity(uplink::VelocityPoint {
+                                vx: vx.0,
+                                vy: vy.0,
+                                vz: vz.0,
+                                yaw_rate,
+                            }),
+                            Setpoint::PositionPoint {
+                                x,
+                                y,
+                                z,
+                                yaw_degrees,
+                            } => uplink::setpoint::Point::Position(uplink::PositionPoint {
+                                x: x.0,
+                                y: y.0,
+                                z: z.0,
+                                yaw_degrees,
+                            }),
+                        }),
+                    })
+                    .collect(),
+            }),
+            MissionItem::BilliardBox(params) => Item::BilliardBox(uplink::BilliardParams {
+                bl_x: params.bl_x.0,
+                bl_y: params.bl_y.0,
+                bl_z: params.bl_z.0,
+                tr_x: params.tr_x.0,
+                tr_y: params.tr_y.0,
+                tr_z: params.tr_z.0,
+                vx: params.vx.0,
+                vy: params.vy.0,
+                vz: params.vz.0,
+                hold_for: Some(params.hold_for.try_into().unwrap()),
+            }),
+            MissionItem::Orbit {
+                radius,
+                orbital_period,
+                orbits,
+                z,
+            } => Item::Orbit(uplink::Orbit {
+                radius: radius.0,
+                orbital_period: Some(orbital_period.try_into().unwrap()),
+                orbits: orbits as u64,
+                z: z.0,
+            }),
+            MissionItem::Hover { duration } => Item::Hover(uplink::Hover {
+                duration: Some(duration.try_into().unwrap()),
+            }),
+            MissionItem::Land { duration } => Item::Land(uplink::Land {
+                duration: Some(duration.try_into().unwrap()),
+            }),
+            MissionItem::OnVehicleTrajectory {
+                id,
+                duration,
+                original_command,
+            } => Item::OnVehicleTrajectory(Box::new(uplink::OnVehicleTrajectory {
+                id: id.0.into(),
+                duration: Some(duration.try_into().unwrap()),
+                original_command: Some(Box::new((*original_command).into())),
+            })),
+        };
+
+        uplink::MissionItem { item: Some(item) }
+    }
+}
+
+impl From<uplink::MissionItem> for MissionItem {
+    fn from(value: uplink::MissionItem) -> Self {
+        use uplink::mission_item::Item;
+
+        match value.item.unwrap() {
+            Item::Takeoff(takeoff) => MissionItem::Takeoff {
+                height: Meters(takeoff.height),
+                duration: takeoff.duration.unwrap().try_into().unwrap(),
+            },
+            Item::Move(movement) => MissionItem::Move {
+                x: Meters(movement.x),
+                y: Meters(movement.y),
+                z: Meters(movement.z),
+                duration: movement.duration.unwrap().try_into().unwrap(),
+            },
+            Item::MoveToWaypoint(movement) => MissionItem::MoveToWaypoint {
+                x: Meters(movement.x),
+                y: Meters(movement.y),
+                z: Meters(movement.z),
+                duration: movement.duration.unwrap().try_into().unwrap(),
+            },
+            Item::SmoothPath(path) => {
+                let mode = path.flight_mode();
+                MissionItem::SmoothPath {
+                    waypoints: path
+                        .waypoints
+                        .into_iter()
+                        .map(|waypoint| Waypoint {
+                            x: Meters(waypoint.x),
+                            y: Meters(waypoint.y),
+                            z: Meters(waypoint.z),
+                        })
+                        .collect(),
+                    speed: MetersPerSecond(path.speed),
+                    flight_mode: match mode {
+                        uplink::FlightMode::BodyFrame => FlightMode::BodyFrame,
+                        _ => FlightMode::Strafe,
+                    },
+                }
+            }
+            Item::Setpoints(setpoints) => MissionItem::Setpoints {
+                points: setpoints
+                    .points
+                    .into_iter()
+                    .map(|point| match point.point.unwrap() {
+                        uplink::setpoint::Point::Velocity(point) => Setpoint::VelocityPoint {
+                            vx: MetersPerSecond(point.vx),
+                            vy: MetersPerSecond(point.vy),
+                            vz: MetersPerSecond(point.vz),
+                            yaw_rate: point.yaw_rate,
+                        },
+                        uplink::setpoint::Point::Position(point) => Setpoint::PositionPoint {
+                            x: Meters(point.x),
+                            y: Meters(point.y),
+                            z: Meters(point.z),
+                            yaw_degrees: point.yaw_degrees,
+                        },
+                    })
+                    .collect(),
+            },
+            Item::BilliardBox(params) => MissionItem::BilliardBox(BilliardParams {
+                bl_x: Meters(params.bl_x),
+                bl_y: Meters(params.bl_y),
+                bl_z: Meters(params.bl_z),
+                tr_x: Meters(params.tr_x),
+                tr_y: Meters(params.tr_y),
+                tr_z: Meters(params.tr_z),
+                vx: MetersPerSecond(params.vx),
+                vy: MetersPerSecond(params.vy),
+                vz: MetersPerSecond(params.vz),
+                hold_for: params.hold_for.unwrap().try_into().unwrap(),
+            }),
+            Item::Orbit(orbit) => MissionItem::Orbit {
+                radius: Meters(orbit.radius),
+                orbital_period: orbit.orbital_period.unwrap().try_into().unwrap(),
+                orbits: orbit.orbits as usize,
+                z: Meters(orbit.z),
+            },
+            Item::Hover(hover) => MissionItem::Hover {
+                duration: hover.duration.unwrap().try_into().unwrap(),
+            },
+            Item::Land(land) => MissionItem::Land {
+                duration: land.duration.unwrap().try_into().unwrap(),
+            },
+            Item::OnVehicleTrajectory(trajectory) => MissionItem::OnVehicleTrajectory {
+                id: TrajectoryId(trajectory.id as u8),
+                duration: trajectory.duration.unwrap().try_into().unwrap(),
+                original_command: Box::new((*trajectory.original_command.unwrap()).into()),
+            },
+        }
     }
 }

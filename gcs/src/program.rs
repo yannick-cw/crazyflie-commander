@@ -70,7 +70,8 @@ pub enum NavigationMessage {
 
 pub struct Program<U: Autopilot + 'static> {
     command_unit: &'static U,
-    vehicle_link: VehicleLink,
+    // needs to outlive the places it's shared to go into cmds - though not share between threads
+    vehicle_link: Rc<VehicleLink>,
     terminal_supports_enhancements: bool,
     // needs to outlive the places it's shared to go into cmds - though not share between threads
     mission_loader: Rc<dyn MissionService>,
@@ -79,7 +80,7 @@ pub struct Program<U: Autopilot + 'static> {
 impl<U: Autopilot> Program<U> {
     pub fn new(
         command_unit: &'static U,
-        vehicle_link: VehicleLink,
+        vehicle_link: Rc<VehicleLink>,
         terminal_supports_enhancements: bool,
         loader: Rc<dyn MissionService>,
     ) -> Self {
@@ -201,8 +202,9 @@ impl<U: Autopilot> Ratatea for Program<U> {
                 (model, next_cmd)
             }
             (State::MissionExecution(state), Msg::MissionExecution(msg)) => {
-                let next_cmd = mission_monitor::update(command_unit, state, msg)
-                    .lift_msg(Msg::MissionExecution);
+                let next_cmd =
+                    mission_monitor::update(command_unit, self.vehicle_link.clone(), state, msg)
+                        .lift_msg(Msg::MissionExecution);
                 (model, next_cmd)
             }
             (State::ManualControl(state), Msg::ManualControl(msg)) => {

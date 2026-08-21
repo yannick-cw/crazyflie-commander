@@ -2,15 +2,14 @@ use crate::control::crazyflie::{
     PM_STATE, RANGE_BACK, RANGE_FRONT, RANGE_LEFT, RANGE_RIGHT, RANGE_UP, STATE_ESTIMATE_VX,
     STATE_ESTIMATE_VY, STATE_ESTIMATE_X, STATE_ESTIMATE_Y, STATE_ESTIMATE_YAW, STATE_ESTIMATE_Z,
 };
-use crate::control::low_level_engine::Setpoint;
 use crate::occupancy::grid::OccupancyGrid;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
 use datalink::domain_types::{
-    BatteryLevel, Meters, MetersPerSecond, MissionStatus, Telemetry, VehicleHealth,
+    BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus, Telemetry,
+    TrajectoryId, VehicleHealth, Waypoint,
 };
-use derive_more::Add;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -65,106 +64,6 @@ pub fn health_from_log(health_log: &LogData) -> VehicleHealth {
         },
     }
 }
-
-#[derive(Debug, Default, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct BilliardParams {
-    pub bl_x: Meters,
-    pub bl_y: Meters,
-    pub bl_z: Meters,
-    pub tr_x: Meters,
-    pub tr_y: Meters,
-    pub tr_z: Meters,
-    pub vx: MetersPerSecond,
-    pub vy: MetersPerSecond,
-    pub vz: MetersPerSecond,
-    pub hold_for: Duration,
-}
-
-#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct Waypoint {
-    pub x: Meters,
-    pub y: Meters,
-    pub z: Meters,
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
-pub enum FlightMode {
-    Strafe,
-    BodyFrame,
-}
-
-/// A single high-level flight instruction.
-///
-/// A mission is a list of `MissionItem`s executed by [`Autopilot::run_mission`].
-/// Positions are relative to the takeoff point unless a variant states otherwise.
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub enum MissionItem {
-    Takeoff {
-        height: Meters,
-        duration: Duration,
-    },
-    // move relative to the current position
-    Move {
-        x: Meters,
-        y: Meters,
-        z: Meters,
-        duration: Duration,
-    },
-    // move to a waypoint relative to the takeoff position
-    MoveToWaypoint {
-        x: Meters,
-        y: Meters,
-        z: Meters,
-        duration: Duration,
-    },
-    // smooth waypoint - relative to takeoff position
-    // important - first setpoint has to be the current position!
-    SmoothPath {
-        waypoints: Vec<Waypoint>,
-        speed: MetersPerSecond,
-        flight_mode: FlightMode,
-    },
-    Setpoints {
-        points: Vec<Setpoint>,
-    },
-    // fly a bouncing pattern in the rectangle define by bl tr
-    //   | ------- tr
-    //   |         |
-    //  bl ------- |
-    BilliardBox(BilliardParams),
-    Orbit {
-        radius: Meters,
-        orbital_period: Duration,
-        orbits: usize,
-        z: Meters,
-    },
-    Hover {
-        duration: Duration,
-    },
-    Land {
-        duration: Duration,
-    },
-    OnVehicleTrajectory {
-        id: TrajectoryId,
-        duration: Duration,
-        original_command: Box<MissionItem>,
-    },
-}
-
-impl MissionItem {
-    // currently only `Orbit` supports uploading trajectory
-    pub fn can_upload_trajectory(&self) -> bool {
-        matches!(
-            self,
-            MissionItem::Orbit { .. } | MissionItem::SmoothPath { .. }
-        )
-    }
-}
-
-#[derive(
-    Debug, Default, Copy, Eq, Ord, Clone, PartialEq, PartialOrd, Hash, Serialize, Deserialize, Add,
-)]
-pub struct TrajectoryId(pub u8);
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct SetpointHover {

@@ -1,7 +1,7 @@
 use datalink::compression_adapter::grid_to_changed_cells;
 use datalink::domain_types::{Cell, OccupancyGrid};
 use divan::Bencher;
-use rand::{Rng, random_range};
+use rand::Rng;
 
 fn main() {
     divan::main();

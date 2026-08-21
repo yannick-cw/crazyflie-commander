@@ -1,0 +1,19 @@
+[
+  {
+    "Takeoff": {
+      "height": 0.5,
+      "duration": {
+        "secs": 2,
+        "nanos": 0
+      }
+    }
+  },
+  {
+    "Land": {
+      "duration": {
+        "secs": 2,
+        "nanos": 0
+      }
+    }
+  }
+]

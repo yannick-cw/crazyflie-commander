@@ -1,13 +1,15 @@
+use crate::ground_data_link::vehicle_link::VehicleLink;
 use crate::pages::mission_monitor::Msg::{
     EmergencyAbort, ExitPage, SafeLand, StartMission, ToggleLinkMode,
 };
 use Msg::{MissionResult, MissionUpdate};
 use crossterm::event::{KeyCode, KeyEvent};
-use datalink::domain_types::{MissionStatus, Reason};
+use datalink::domain_types::{MissionItem, MissionStatus, Reason};
 use futures::{TryFutureExt, TryStreamExt, stream};
 use mission_computer::errors::{MissionError, Res};
-use mission_computer::{Abort, Autopilot, MissionItem};
+use mission_computer::{Abort, Autopilot};
 use ratatea::Cmd;
+use std::rc::Rc;
 use tokio::sync::oneshot;
 use tokio_stream::StreamExt;
 use tracing::warn;
@@ -75,21 +77,26 @@ pub enum Msg {
 
 // update ------------------------------------
 
-pub fn update(command_unit: &'static impl Autopilot, model: &mut Model, msg: Msg) -> Cmd<Msg> {
+pub fn update(
+    command_unit: &'static impl Autopilot,
+    vehicle_link: Rc<VehicleLink>,
+    model: &mut Model,
+    msg: Msg,
+) -> Cmd<Msg> {
     match msg {
         StartMission => {
             let mission = model.mission.clone();
-            let (sender, receiver) = oneshot::channel();
-            let h = tokio::spawn(
-                command_unit.run_mission(mission, async move { Some(receiver.await.unwrap()) }),
-            );
-            model.abort_sender = Some(sender);
 
-            Cmd::new(h, |r| {
-                r.unwrap()
-                    .unwrap_or_else(|err| warn!("Mission failed with: {err}"));
-                MissionResult
-            })
+            // todo re-work abort next
+            // model.abort_sender = Some(sender);
+
+            Cmd::new(
+                async move { vehicle_link.submit_mission(mission).await },
+                |r| {
+                    r.unwrap_or_else(|err| warn!("Mission failed with: {err}"));
+                    MissionResult
+                },
+            )
         }
         MissionResult => Cmd::none(),
         SafeLand => abort_mission(model, Abort::Land),

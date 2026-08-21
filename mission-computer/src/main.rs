@@ -1,4 +1,5 @@
 use datalink::downlink::stream_telemetry_server::StreamTelemetryServer;
+use datalink::uplink::uplink_service_server::UplinkServiceServer;
 use mission_computer::dev_pilot::DevPilot;
 use mission_computer::server::MissionServer;
 use mission_computer::setup_link;
@@ -12,14 +13,22 @@ async fn main() -> Result<(), anyhow::Error> {
 
     info!("Starting up....");
     let server = match setup_link().await {
-        Ok(real_unit) => Server::builder().add_service(StreamTelemetryServer::new(MissionServer {
-            autopilot: real_unit,
-        })),
+        Ok(real_unit) => {
+            let server = MissionServer {
+                autopilot: real_unit.into(),
+            };
+            Server::builder()
+                .add_service(StreamTelemetryServer::new(server.clone()))
+                .add_service(UplinkServiceServer::new(server))
+        }
         _ => {
             // fallback for dev
-            Server::builder().add_service(StreamTelemetryServer::new(MissionServer {
-                autopilot: DevPilot,
-            }))
+            let server = MissionServer {
+                autopilot: DevPilot.into(),
+            };
+            Server::builder()
+                .add_service(StreamTelemetryServer::new(server.clone()))
+                .add_service(UplinkServiceServer::new(server))
         }
     };
     let address = "127.0.0.1:50051".parse::<SocketAddr>()?;

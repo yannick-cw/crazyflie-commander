@@ -1,12 +1,11 @@
-use crate::control::autopilot::{FlightMode, Waypoint};
-use crate::control::low_level_engine::{Setpoint, Step, StepState};
+use crate::control::low_level_engine::{Step, StepState};
 use crate::control::vehicle::Vehicle;
 use crate::utils::errors::Res;
 use crate::utils::math::{
     SpeedVec, WaypointDist, calc_axis_speed, calc_yaw_rate, split_relative_speed_to_absolute,
     waypoint_deltas,
 };
-use datalink::domain_types::{Meters, MetersPerSecond, Telemetry};
+use datalink::domain_types::{FlightMode, Meters, MetersPerSecond, Setpoint, Telemetry, Waypoint};
 
 pub async fn run_smooth_path(
     path: Vec<Waypoint>,
