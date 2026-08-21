@@ -1,5 +1,5 @@
 use datalink::compression_adapter::decompressed_grid_stream;
-use datalink::domain_types::{MissionItem, MissionStatus, Telemetry, VehicleHealth};
+use datalink::domain_types::{Abort, MissionItem, MissionStatus, Telemetry, VehicleHealth};
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
 use datalink::uplink::uplink_service_client::UplinkServiceClient;
 use datalink::{domain_types, downlink, uplink};
@@ -102,7 +102,17 @@ impl VehicleLink {
         client
             .execute_mission(wire_mission)
             .await
-            .map_err(|err| UploadError(format!("Could not upload mission {:?}", err)))?;
+            .map_err(|err| UploadError(format!("Could not start mission {:?}", err)))?;
+        Ok(())
+    }
+
+    pub async fn abort_mission(&self, signal: Abort) -> Res<()> {
+        let mut client = self.uplink_client.clone();
+
+        client
+            .abort_mission(uplink::AbortMission::from(signal))
+            .await
+            .map_err(|err| UploadError(format!("Could not abort mission {:?}", err)))?;
         Ok(())
     }
 }

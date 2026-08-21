@@ -1,16 +1,15 @@
 use crate::Autopilot;
+use crate::control::vehicle_control::VehicleHandle;
 use datalink::compression_adapter::compressed_grid_stream;
 use datalink::domain_types;
 use datalink::domain_types::Cell;
 use datalink::downlink::message::Msg;
 use datalink::downlink::stream_telemetry_server::StreamTelemetry;
 use datalink::downlink::{Message, MissionStatus, OccupancyGrid, VehicleHealth, VehicleState};
-use datalink::uplink::Mission;
 use datalink::uplink::uplink_service_server::UplinkService;
+use datalink::uplink::{AbortMission, Mission};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status};
@@ -19,12 +18,9 @@ use tracing::error;
 pub struct MissionServer<A: Autopilot> {
     pub autopilot: Arc<A>,
 }
-impl<A: Autopilot> Clone for MissionServer<A> {
-    fn clone(&self) -> Self {
-        Self {
-            autopilot: self.autopilot.clone(),
-        }
-    }
+
+pub struct UplinkServer {
+    pub vehicle_handle: VehicleHandle,
 }
 
 #[tonic::async_trait]
@@ -83,7 +79,7 @@ impl<A: Autopilot + Send + Sync + 'static> StreamTelemetry for MissionServer<A> 
     }
 }
 #[tonic::async_trait]
-impl<A: Autopilot + Send + Sync + 'static> UplinkService for MissionServer<A> {
+impl UplinkService for UplinkServer {
     async fn execute_mission(&self, request: Request<Mission>) -> Result<Response<()>, Status> {
         let mission: Vec<_> = request
             .into_inner()
@@ -92,23 +88,25 @@ impl<A: Autopilot + Send + Sync + 'static> UplinkService for MissionServer<A> {
             .map(domain_types::MissionItem::from)
             .collect();
 
-        let pilot = self.autopilot.clone();
+        let vehicle_handle = self.vehicle_handle.clone();
 
-        // todo should probably not run from here directly - e.g. double calling clashes - maybe some
-        // actors with messages or state machine internally
-        // -------
-        // move to handler model, this server here just gets a handler, the handler itself runs on a
-        // task and has idle, mission_exe, free_flight or whatever state, and the handler req communicate via
-        // channels with it from here - oneshot reply if accepted or rejected..
-        tokio::spawn(async move {
-            let _ = pilot
-                .run_mission(mission, async {
-                    sleep(Duration::from_hours(10)).await;
-                    None
-                })
-                .await
-                .inspect_err(|err| error!("Failed mission execution {:?}", err));
-        });
-        Ok(Response::new(()))
+        vehicle_handle
+            .submit_mission(mission)
+            .await
+            .inspect_err(|err| error!("Failed mission execution {:?}", err))
+            .map_err(|err| Status::failed_precondition(format!("{:?}", err)))
+            .map(Response::new)
+    }
+
+    async fn abort_mission(&self, request: Request<AbortMission>) -> Result<Response<()>, Status> {
+        let abort_signal = request.into_inner().into();
+        let vehicle_handle = self.vehicle_handle.clone();
+
+        vehicle_handle
+            .abort_mission(abort_signal)
+            .await
+            .inspect_err(|err| error!("Failed mission abortion {:?}", err))
+            .map_err(|err| Status::failed_precondition(format!("{:?}", err)))
+            .map(Response::new)
     }
 }

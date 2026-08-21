@@ -7,20 +7,14 @@ use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
 use datalink::domain_types::{
-    BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus, Telemetry,
-    TrajectoryId, VehicleHealth, Waypoint,
+    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus,
+    Telemetry, TrajectoryId, VehicleHealth, Waypoint,
 };
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::warn;
-
-#[derive(Clone, Copy, Debug)]
-pub enum Abort {
-    FlightTermination,
-    Land,
-}
 
 fn get_log_by_name(name: &str, l: &LogData) -> f32 {
     l.data

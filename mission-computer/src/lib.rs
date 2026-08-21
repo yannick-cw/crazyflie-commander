@@ -20,9 +20,10 @@ mod occupancy;
 mod utils;
 
 pub use air_data_link::server;
-pub use control::autopilot::{Abort, Autopilot, ManualControl, SetpointHover};
+pub use control::autopilot::{Autopilot, ManualControl, SetpointHover};
 pub use control::crazyflie::CrazyPilot;
 pub use control::crazyflie::setup_link;
+pub use control::vehicle_control::init_vehicle_control;
 pub use occupancy::grid::{Cell, OccupancyGrid};
 pub use utils::dev_pilot;
 pub use utils::errors;

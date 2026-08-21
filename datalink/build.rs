@@ -5,6 +5,7 @@ fn main() {
             "uplink_service.proto",
             "downlink_service.proto",
             "mission_item.proto",
+            "abort.proto",
         ],
         ["proto/"],
     )

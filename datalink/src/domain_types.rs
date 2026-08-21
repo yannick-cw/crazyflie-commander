@@ -669,3 +669,29 @@ impl From<uplink::MissionItem> for MissionItem {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub enum Abort {
+    FlightTermination,
+    Land,
+}
+
+impl From<Abort> for uplink::AbortMission {
+    fn from(value: Abort) -> Self {
+        uplink::AbortMission {
+            abort: match value {
+                Abort::FlightTermination => uplink::abort_mission::Abort::HardStop.into(),
+                Abort::Land => uplink::abort_mission::Abort::Land.into(),
+            },
+        }
+    }
+}
+
+impl From<uplink::AbortMission> for Abort {
+    fn from(value: uplink::AbortMission) -> Self {
+        match value.abort() {
+            uplink::abort_mission::Abort::Land => Abort::Land,
+            uplink::abort_mission::Abort::HardStop => Abort::FlightTermination,
+        }
+    }
+}

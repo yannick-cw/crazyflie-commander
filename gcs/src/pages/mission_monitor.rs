@@ -4,22 +4,20 @@ use crate::pages::mission_monitor::Msg::{
 };
 use Msg::{MissionResult, MissionUpdate};
 use crossterm::event::{KeyCode, KeyEvent};
-use datalink::domain_types::{MissionItem, MissionStatus, Reason};
+use datalink::domain_types::{Abort, MissionItem, MissionStatus, Reason};
 use futures::{TryFutureExt, TryStreamExt, stream};
+use mission_computer::Autopilot;
 use mission_computer::errors::{MissionError, Res};
-use mission_computer::{Abort, Autopilot};
 use ratatea::Cmd;
 use std::rc::Rc;
-use tokio::sync::oneshot;
 use tokio_stream::StreamExt;
-use tracing::warn;
+use tracing::{error, warn};
 
 // model ------------------------------------
 #[derive(Debug)]
 pub struct Model {
     pub mission: Vec<MissionItem>,
     pub name: String,
-    pub abort_sender: Option<oneshot::Sender<Abort>>,
     pub mission_status: MissionStatus,
     pub link_mode: ExecutionMode,
 }
@@ -28,7 +26,6 @@ impl Model {
         Self {
             mission,
             name,
-            abort_sender: None,
             mission_status: MissionStatus::Idle,
             link_mode: ExecutionMode::Online,
         }
@@ -66,7 +63,7 @@ pub enum ExecutionMode {
 #[derive(Debug)]
 pub enum Msg {
     StartMission,
-    MissionResult,
+    MissionResult(Res<()>),
     SafeLand,
     EmergencyAbort,
     MissionUpdate(MissionStatus),
@@ -86,21 +83,18 @@ pub fn update(
     match msg {
         StartMission => {
             let mission = model.mission.clone();
-
-            // todo re-work abort next
-            // model.abort_sender = Some(sender);
-
             Cmd::new(
                 async move { vehicle_link.submit_mission(mission).await },
-                |r| {
-                    r.unwrap_or_else(|err| warn!("Mission failed with: {err}"));
-                    MissionResult
-                },
+                MissionResult,
             )
         }
-        MissionResult => Cmd::none(),
-        SafeLand => abort_mission(model, Abort::Land),
-        EmergencyAbort => abort_mission(model, Abort::FlightTermination),
+        MissionResult(Ok(_)) => Cmd::none(),
+        MissionResult(Err(err)) => {
+            error!("failed with {:?}", err);
+            Cmd::none()
+        }
+        SafeLand => abort_mission(vehicle_link, Abort::Land),
+        EmergencyAbort => abort_mission(vehicle_link, Abort::FlightTermination),
         MissionUpdate(update) => {
             model.mission_status = update;
             Cmd::none()
@@ -142,14 +136,11 @@ pub fn update(
 }
 
 // util ------------------------------------------
-fn abort_mission(model: &mut Model, signal: Abort) -> Cmd<Msg> {
-    match model.abort_sender.take() {
-        None => Cmd::none(),
-        Some(s) => {
-            let signal = async move { s.send(signal) };
-            Cmd::new(signal, |_| MissionResult)
-        }
-    }
+fn abort_mission(link: Rc<VehicleLink>, signal: Abort) -> Cmd<Msg> {
+    Cmd::new(
+        async move { link.clone().abort_mission(signal).await },
+        MissionResult,
+    )
 }
 
 pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {

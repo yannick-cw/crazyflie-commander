@@ -11,6 +11,10 @@ pub enum MissionError {
     UploadError(String),
     #[error("Failed while rendering")]
     RenderFailure,
+    #[error("Failed command :{0}")]
+    StateError(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
 }
 /// Result type for interacting with this crate.
 pub type Res<A> = Result<A, MissionError>;

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package uplink;
+
+message AbortMission {
+  enum Abort {
+    Land = 0;
+    Hard_Stop = 1;
+  }
+  Abort abort = 1;
+}
