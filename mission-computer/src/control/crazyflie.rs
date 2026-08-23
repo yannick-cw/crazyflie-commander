@@ -281,8 +281,9 @@ impl Autopilot for CrazyPilot {
         z: Meters,
     ) -> Res<(TrajectoryId, Duration)> {
         let c = orbit_to_trajectory(radius, orbital_period, orbits, z)?;
-        let id = self.vehicle.upload_compressed_trajectory(&c).await?;
-        Ok((id, c.duration))
+        let duration = c.duration;
+        let id = self.vehicle.upload_compressed_trajectory(c).await?;
+        Ok((id, duration))
     }
 
     async fn upload_smooth_path(
@@ -292,8 +293,9 @@ impl Autopilot for CrazyPilot {
         flight_mode: FlightMode,
     ) -> Res<(TrajectoryId, Duration)> {
         let t = waypoints_to_trajectory(waypoints, speed, flight_mode)?;
-        let id = self.vehicle.upload_trajectory(&t).await?;
-        Ok((id, t.duration))
+        let duration = t.duration;
+        let id = self.vehicle.upload_trajectory(t).await?;
+        Ok((id, duration))
     }
 
     async fn fly(&mut self, commands: impl Stream<Item = ManualControl>) -> Res<()> {

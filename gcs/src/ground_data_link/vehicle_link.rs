@@ -115,4 +115,6 @@ impl VehicleLink {
             .map_err(|err| UploadError(format!("Could not abort mission {:?}", err)))?;
         Ok(())
     }
+
+    // todo upload trajectory
 }

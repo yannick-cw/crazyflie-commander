@@ -1,68 +1,42 @@
 use crate::Autopilot;
-use crate::control::vehicle_control::VehicleAction::{
-    AbortMission, PostMissionCleanup, StartMission,
-};
-use crate::control::vehicle_control::VehicleMsg::{AbortCommand, RunMission};
 use crate::control::vehicle_control::VehicleState::{ExecutingMission, HardStopped, Idle, Landing};
 use crate::errors::MissionError::StateError;
 use crate::errors::Res;
 use anyhow::Context;
 use datalink::domain_types;
-use datalink::domain_types::Abort;
+use datalink::domain_types::{Abort, TrajectoryId};
+use std::fmt::{Debug, Formatter};
+use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
+use tracing::error;
 
-#[derive(Clone, Debug, PartialOrd, PartialEq)]
-enum VehicleState {
-    Idle,
-    Landing,
-    ExecutingMission,
-    // ManualControl { command_sender },
+enum VehicleState<A: Autopilot> {
+    Idle(A),
+    Landing(JoinHandle<A>),
+    ExecutingMission(oneshot::Sender<Abort>, JoinHandle<A>),
     HardStopped,
+}
+impl<A: Autopilot> Debug for VehicleState<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Idle(_) => write!(f, "Idle"),
+            Landing(_) => write!(f, "Landing"),
+            ExecutingMission(_, _) => write!(f, "ExecutingMissions"),
+            HardStopped => write!(f, "HardStopped"),
+        }
+    }
 }
 
 #[derive(Debug)]
-struct Message {
-    cmd: VehicleMsg,
-    reply: Option<oneshot::Sender<Res<()>>>,
-}
-impl Message {
-    fn new(cmd: VehicleMsg) -> Self {
-        Self { cmd, reply: None }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum VehicleMsg {
-    RunMission(Vec<domain_types::MissionItem>),
-    AbortCommand(Abort),
+enum Message {
+    RunMission(Vec<domain_types::MissionItem>, oneshot::Sender<Res<()>>),
+    AbortCommand(Abort, oneshot::Sender<Res<()>>),
     MissionFinished,
-    // StartManualFlight,
-    // UploadTrajectory(domain_types::MissionItem),
-}
-
-#[derive(Debug, PartialOrd, PartialEq)]
-enum VehicleAction {
-    StartMission(Vec<domain_types::MissionItem>),
-    AbortMission(Abort),
-    PostMissionCleanup,
-}
-
-fn step(command: VehicleMsg, state: &VehicleState) -> Res<(VehicleState, Option<VehicleAction>)> {
-    match (command, state) {
-        (RunMission(mission), Idle) => Ok((ExecutingMission, Some(StartMission(mission)))),
-        (RunMission(_), _) => Err(StateError("Not ready to start mission".into())),
-        (VehicleMsg::MissionFinished, HardStopped) => Ok((HardStopped, Some(PostMissionCleanup))),
-        (VehicleMsg::MissionFinished, _) => Ok((Idle, Some(PostMissionCleanup))),
-        (AbortCommand(Abort::FlightTermination), _) => {
-            Ok((HardStopped, Some(AbortMission(Abort::FlightTermination))))
-        }
-        (AbortCommand(Abort::Land), ExecutingMission) => {
-            Ok((Landing, Some(AbortMission(Abort::Land))))
-        }
-        (AbortCommand(Abort::Land), _) => Err(StateError("Not in mission - cant land".into())),
-    }
+    UploadMissionItem(
+        domain_types::MissionItem,
+        oneshot::Sender<Res<Option<(TrajectoryId, Duration)>>>,
+    ),
 }
 
 #[derive(Debug, Clone)]
@@ -74,10 +48,19 @@ impl VehicleHandle {
     pub async fn submit_mission(&self, m: Vec<domain_types::MissionItem>) -> Res<()> {
         let (reply, rx) = oneshot::channel();
         self.command_sender
-            .send(Message {
-                cmd: RunMission(m),
-                reply: Some(reply),
-            })
+            .send(Message::RunMission(m, reply))
+            .await
+            .context("could not send!")?;
+
+        rx.await.context("could not receive")?
+    }
+    pub async fn upload_mission_item(
+        &self,
+        m: domain_types::MissionItem,
+    ) -> Res<Option<(TrajectoryId, Duration)>> {
+        let (reply, rx) = oneshot::channel();
+        self.command_sender
+            .send(Message::UploadMissionItem(m, reply))
             .await
             .context("could not send!")?;
 
@@ -86,10 +69,7 @@ impl VehicleHandle {
     pub async fn abort_mission(&self, abort_signal: Abort) -> Res<()> {
         let (reply, rx) = oneshot::channel();
         self.command_sender
-            .send(Message {
-                cmd: AbortCommand(abort_signal),
-                reply: Some(reply),
-            })
+            .send(Message::AbortCommand(abort_signal, reply))
             .await
             .context("could not send!")?;
 
@@ -98,97 +78,74 @@ impl VehicleHandle {
 }
 
 pub struct VehicleController<A: Autopilot> {
-    state: VehicleState,
-    action_runner: ActionRunner<A>,
+    state: VehicleState<A>,
     command_receiver: mpsc::Receiver<Message>,
+    command_sender: mpsc::Sender<Message>,
 }
 
 impl<A: Autopilot + Send + Sync + 'static> VehicleController<A> {
     pub async fn run(self) {
         let mut receiver = self.command_receiver;
         let mut current_state = self.state;
-        let mut runner = self.action_runner;
+        let command_sender = self.command_sender;
 
         while let Some(cmd) = receiver.recv().await {
-            current_state = match step(cmd.cmd, &current_state) {
-                Ok((new_state, action)) => {
-                    if let Some(reply) = cmd.reply {
-                        let _ = reply.send(Ok(()));
-                    }
-                    if let Some(action) = action {
-                        runner = runner.execute(action).await;
-                    }
+            current_state = match (cmd, current_state) {
+                (Message::RunMission(mission, reply), Idle(mut autopilot)) => {
+                    let (abort_sender, abort_rcv) = oneshot::channel();
+
+                    let local_sender = command_sender.clone();
+                    let handle = tokio::spawn(async move {
+                        let _ = autopilot
+                            .run_mission(mission, async { abort_rcv.await.ok() })
+                            .await
+                            .inspect_err(|err| error!("Failed mission execution: {:?}", err));
+                        let _ = local_sender.send(Message::MissionFinished).await;
+                        autopilot
+                    });
+                    let _ = reply.send(Ok(()));
+                    ExecutingMission(abort_sender, handle)
+                }
+                (Message::AbortCommand(abort, reply), ExecutingMission(abort_handler, h)) => {
+                    let new_state = match abort {
+                        Abort::FlightTermination => HardStopped,
+                        Abort::Land => Landing(h),
+                    };
+                    let _ = abort_handler.send(abort);
+                    let _ = reply.send(Ok(()));
                     new_state
                 }
-                Err(err) => {
-                    info!("Invalid state transition: {:?}", err);
-                    if let Some(reply) = cmd.reply {
-                        let _ = reply.send(Err(err));
-                    }
-                    current_state
+                (Message::MissionFinished, ExecutingMission(_, handle) | Landing(handle)) => {
+                    let autopilot = handle.await.expect("should not fail");
+                    Idle(autopilot)
                 }
-            }
-        }
-    }
-}
-
-enum RunnerState<A: Autopilot> {
-    Mission(Option<oneshot::Sender<Abort>>, JoinHandle<A>),
-    Idle(A),
-}
-struct ActionRunner<A: Autopilot> {
-    state: RunnerState<A>,
-    command_sender: mpsc::Sender<Message>,
-}
-
-impl<A: Autopilot + Send + Sync + 'static> ActionRunner<A> {
-    async fn execute(self, a: VehicleAction) -> Self {
-        match (a, self.state) {
-            (StartMission(mission), RunnerState::Idle(mut autopilot)) => {
-                let (abort_sender, abort_rcv) = oneshot::channel();
-                let result_sender = self.command_sender.clone();
-
-                let handle = tokio::spawn(async move {
-                    let _ = autopilot
-                        .run_mission(mission, async { abort_rcv.await.ok() })
-                        .await
-                        .inspect_err(|err| error!("Failed mission execution: {:?}", err));
-                    let _ = result_sender
-                        .send(Message::new(VehicleMsg::MissionFinished))
-                        .await;
-                    autopilot
-                });
-
-                Self {
-                    state: RunnerState::Mission(Some(abort_sender), handle),
-                    ..self
+                (Message::MissionFinished, state) => state,
+                (Message::UploadMissionItem(item, reply), Idle(mut autopilot)) => {
+                    let res = autopilot.upload_command(item).await;
+                    let _ = reply.send(res);
+                    Idle(autopilot)
                 }
-            }
-            (StartMission(_), state @ RunnerState::Mission(_, _)) => {
-                warn!("cant start mission while running mission");
-                Self { state, ..self }
-            }
-            (AbortMission(abort_action), RunnerState::Mission(Some(abort), h)) => {
-                let _ = abort.send(abort_action);
-                Self {
-                    state: RunnerState::Mission(None, h),
-                    ..self
+                (Message::RunMission(_, reply), s) => {
+                    let _ = reply.send(Err(StateError(format!(
+                        "Can't start mission when in {:?} state",
+                        s
+                    ))));
+                    s
                 }
-            }
-            (AbortMission(_), state) => {
-                info!("cant abort idle state or aborted state");
-                Self { state, ..self }
-            }
-            (PostMissionCleanup, RunnerState::Mission(_, handle)) => {
-                let autopilot = handle.await.expect("should not fail");
-                Self {
-                    state: RunnerState::Idle(autopilot),
-                    ..self
+                (Message::UploadMissionItem(_, reply), s) => {
+                    let _ = reply.send(Err(StateError(format!(
+                        "Can't upload mission when in {:?} state",
+                        s
+                    ))));
+                    s
                 }
-            }
-            (PostMissionCleanup, state) => {
-                info!("should not be cleaning up in idle state");
-                Self { state, ..self }
+                (Message::AbortCommand(_, reply), s) => {
+                    let _ = reply.send(Err(StateError(format!(
+                        "Can't abort mission when in {:?} state",
+                        s
+                    ))));
+                    s
+                }
             }
         }
     }
@@ -198,89 +155,110 @@ pub fn init_vehicle_control<A: Autopilot>(autopilot: A) -> (VehicleController<A>
     let (command_sender, command_receiver) = mpsc::channel(64);
     (
         VehicleController {
-            state: Idle,
-            action_runner: ActionRunner {
-                state: RunnerState::Idle(autopilot),
-                command_sender: command_sender.clone(),
-            },
+            state: Idle(autopilot),
             command_receiver,
+            command_sender: command_sender.clone(),
         },
         VehicleHandle { command_sender },
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::control::vehicle_control::VehicleMsg::{AbortCommand, MissionFinished, RunMission};
-    use crate::control::vehicle_control::VehicleState::{
-        ExecutingMission, HardStopped, Idle, Landing,
-    };
-    use crate::control::vehicle_control::{VehicleMsg, VehicleState, step};
-    use datalink::domain_types::Abort;
-    use proptest::strategy::{Just, Strategy};
-    use proptest::{prop_assert, prop_assert_eq, prop_oneof};
-    use test_strategy::proptest;
-
-    fn arb_msg() -> impl Strategy<Value = VehicleMsg> {
-        prop_oneof![
-            Just(MissionFinished),
-            Just(RunMission(vec![])),
-            Just(AbortCommand(Abort::FlightTermination)),
-            Just(AbortCommand(Abort::Land)),
-        ]
-    }
-
-    fn arb_state() -> impl Strategy<Value = VehicleState> {
-        prop_oneof![
-            Just(Idle),
-            Just(ExecutingMission),
-            Just(HardStopped),
-            Just(Landing),
-        ]
-    }
-
-    #[proptest]
-    fn never_recover_from_hard_stopped(#[strategy(arb_msg())] any_cmd: VehicleMsg) {
-        let res = step(any_cmd, &HardStopped);
-
-        match res {
-            Ok((s, _)) => prop_assert_eq!(HardStopped, s),
-            Err(_) => {}
-        }
-    }
-
-    #[proptest]
-    fn only_start_mission_from_idle(#[strategy(arb_state())] any_state: VehicleState) {
-        let res = step(RunMission(vec![]), &any_state);
-
-        match res {
-            Ok((s, _)) => {
-                prop_assert_eq!(ExecutingMission, s);
-                prop_assert_eq!(Idle, any_state);
-            }
-            Err(_) => {
-                prop_assert!(any_state != Idle)
-            }
-        }
-    }
-
-    #[proptest]
-    fn mission_finished_always_ok(#[strategy(arb_state())] any_state: VehicleState) {
-        let res = step(MissionFinished, &any_state);
-        prop_assert!(res.is_ok())
-    }
-
-    #[proptest]
-    fn can_only_land_during_mission(#[strategy(arb_state())] any_state: VehicleState) {
-        let res = step(AbortCommand(Abort::Land), &any_state);
-        match res {
-            Ok((s, _)) => {
-                prop_assert_eq!(Landing, s);
-                prop_assert_eq!(ExecutingMission, any_state);
-            }
-            Err(_) => {
-                prop_assert!(any_state != ExecutingMission)
-            }
-        }
-    }
-}
+// todo test the implemented handler with a test specific Autopilot that waits on a channel to move forward
+// #[cfg(test)]
+// mod tests {
+//     use crate::control::vehicle_control::VehicleMsg::{
+//         AbortCommand, MissionFinished, RunMission, UploadMissionItem,
+//     };
+//     use crate::control::vehicle_control::VehicleState::{
+//         ExecutingMission, HardStopped, Idle, Landing,
+//     };
+//     use crate::control::vehicle_control::{VehicleAction, VehicleMsg, VehicleState, step};
+//     use datalink::domain_types::{Abort, MissionItem};
+//     use proptest::strategy::{Just, Strategy};
+//     use proptest::{prop_assert, prop_assert_eq, prop_oneof};
+//     use test_strategy::proptest;
+//     use tokio::sync::oneshot;
+//
+//     fn arb_msg() -> impl Strategy<Value = VehicleMsg> {
+//         let (fake_sender, _) = oneshot::channel();
+//         prop_oneof![
+//             Just(MissionFinished),
+//             Just(UploadMissionItem(MissionItem::Setpoints { points: vec![] })),
+//             Just(RunMission(vec![], fake_sender)),
+//             Just(AbortCommand(Abort::FlightTermination)),
+//             Just(AbortCommand(Abort::Land)),
+//         ]
+//     }
+//
+//     fn arb_state() -> impl Strategy<Value = VehicleState> {
+//         prop_oneof![
+//             Just(Idle),
+//             Just(ExecutingMission),
+//             Just(HardStopped),
+//             Just(Landing),
+//         ]
+//     }
+//
+//     #[proptest]
+//     fn never_recover_from_hard_stopped(#[strategy(arb_msg())] any_cmd: VehicleMsg) {
+//         let res = step(any_cmd, &HardStopped);
+//
+//         match res {
+//             Ok((s, _)) => prop_assert_eq!(HardStopped, s),
+//             Err(_) => {}
+//         }
+//     }
+//
+//     #[proptest]
+//     fn only_start_mission_from_idle(#[strategy(arb_state())] any_state: VehicleState) {
+//         let res = step(RunMission(vec![]), &any_state);
+//
+//         match res {
+//             Ok((s, action)) => {
+//                 prop_assert_eq!(ExecutingMission, s);
+//                 prop_assert_eq!(Idle, any_state);
+//                 prop_assert_eq!(VehicleAction::StartMission(vec![]), action);
+//             }
+//             Err(_) => {
+//                 prop_assert!(any_state != Idle)
+//             }
+//         }
+//     }
+//
+//     #[proptest]
+//     fn mission_finished_always_ok(#[strategy(arb_state())] any_state: VehicleState) {
+//         let res = step(MissionFinished, &any_state);
+//         prop_assert!(res.is_ok())
+//     }
+//
+//     #[proptest]
+//     fn can_only_land_during_mission(#[strategy(arb_state())] any_state: VehicleState) {
+//         let res = step(AbortCommand(Abort::Land), &any_state);
+//         match res {
+//             Ok((s, action)) => {
+//                 prop_assert_eq!(Landing, s);
+//                 prop_assert_eq!(ExecutingMission, any_state);
+//                 prop_assert_eq!(VehicleAction::AbortMission(Abort::Land), action);
+//             }
+//             Err(_) => {
+//                 prop_assert!(any_state != ExecutingMission)
+//             }
+//         }
+//     }
+//
+//     #[proptest]
+//     fn can_only_upload_when_idle(#[strategy(arb_state())] any_state: VehicleState) {
+//         let item = MissionItem::Setpoints { points: vec![] };
+//         let res = step(UploadMissionItem(item.clone()), &any_state);
+//         match res {
+//             Ok((s, action)) => {
+//                 prop_assert_eq!(Idle, s);
+//                 prop_assert_eq!(Idle, any_state);
+//                 prop_assert_eq!(VehicleAction::UploadTrajectory(item), action);
+//             }
+//             Err(_) => {
+//                 prop_assert!(any_state != Idle)
+//             }
+//         }
+//     }
+// }

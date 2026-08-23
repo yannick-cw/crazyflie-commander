@@ -1,13 +1,13 @@
 use crate::control::autopilot::VehicleDownlink;
 use crate::control::vehicle_control::VehicleHandle;
 use datalink::compression_adapter::compressed_grid_stream;
-use datalink::domain_types;
 use datalink::domain_types::Cell;
 use datalink::downlink::message::Msg;
 use datalink::downlink::stream_telemetry_server::StreamTelemetry;
 use datalink::downlink::{Message, MissionStatus, OccupancyGrid, VehicleHealth, VehicleState};
 use datalink::uplink::uplink_service_server::UplinkService;
-use datalink::uplink::{AbortMission, Mission};
+use datalink::uplink::{AbortMission, Mission, MissionItem};
+use datalink::{domain_types, uplink};
 use std::pin::Pin;
 use tokio_stream::wrappers::{BroadcastStream, WatchStream};
 use tokio_stream::{Stream, StreamExt};
@@ -106,5 +106,27 @@ impl UplinkService for UplinkServer {
             .inspect_err(|err| error!("Failed mission abortion {:?}", err))
             .map_err(|err| Status::failed_precondition(format!("{:?}", err)))
             .map(Response::new)
+    }
+
+    async fn upload_trajectory(
+        &self,
+        request: Request<MissionItem>,
+    ) -> Result<Response<datalink::uplink::Response>, Status> {
+        let mission_item: domain_types::MissionItem = request.into_inner().into();
+        let vehicle_handle = self.vehicle_handle.clone();
+
+        vehicle_handle
+            .upload_mission_item(mission_item)
+            .await
+            .inspect_err(|err| error!("Failed trajectory upload {:?}", err))
+            .map_err(|err| Status::failed_precondition(format!("{:?}", err)))
+            .map(|res| {
+                Response::new(uplink::Response {
+                    res: res.map(|(t, d)| uplink::TrajectoryResult {
+                        trajectory_id: t.0 as u32,
+                        duration: Some(d.try_into().unwrap()),
+                    }),
+                })
+            })
     }
 }

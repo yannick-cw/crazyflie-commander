@@ -2,6 +2,7 @@ syntax = "proto3";
 import "mission_item.proto";
 import "abort.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/duration.proto";
 
 package uplink;
 
@@ -10,4 +11,14 @@ service UplinkService {
   rpc ExecuteMission (Mission) returns (google.protobuf.Empty) {}
   // abort mission
   rpc AbortMission (AbortMission) returns (google.protobuf.Empty) {}
+  // upload a trajectory
+  rpc UploadTrajectory (MissionItem) returns (Response) {}
+}
+
+message Response {
+  TrajectoryResult res = 1;
+}
+message TrajectoryResult {
+  uint32 trajectory_id = 1;
+  google.protobuf.Duration duration = 2;
 }

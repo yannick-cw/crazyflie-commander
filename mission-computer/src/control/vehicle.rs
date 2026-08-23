@@ -4,11 +4,11 @@ use crate::control::trajectory::orbit_trajectory::CompressedTrajectory;
 use crate::control::trajectory::setpoint_trajectory::Trajectory;
 use crate::errors::MissionError::UploadError;
 use crate::utils::errors::Res;
+use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::high_level_commander::{
     TRAJECTORY_TYPE_POLY4D, TRAJECTORY_TYPE_POLY4D_COMPRESSED,
 };
 use crazyflie_lib::subsystems::memory::{MemoryType, TrajectoryMemory};
-use crazyflie_lib::{Crazyflie, Error};
 use datalink::domain_types::{
     Meters, MetersPerSecond, Setpoint, Telemetry, TrajectoryId, VehicleHealth,
 };
@@ -35,7 +35,7 @@ impl Debug for Vehicle {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct TrajectoryState {
     current_id: TrajectoryId,
     offset_bytes: usize,
@@ -267,14 +267,8 @@ impl Vehicle {
         Ok(())
     }
 
-    async fn write_to_mem<F>(&self, write_t: F) -> Res<usize>
-    where
-        // this AsyncFnOnce ensures the passed in mem outlives the Future returned from F
-        // if using FnOnce instead e.g. it would basically need lifetime so we do not drop
-        // the mem arg before the future is awaited .await
-        F: AsyncFnOnce(&TrajectoryMemory) -> Result<usize, Error>,
-    {
-        // Open the trajectory memory and upload the segments.
+    /// Opens the drone's trajectory memory for writing. The caller must close it again.
+    async fn open_trajectory_memory(&self) -> Res<TrajectoryMemory> {
         let memory_device = self
             .cf
             .memory
@@ -285,104 +279,79 @@ impl Vehicle {
                 "No trajectory memory device found.".to_string(),
             ))?;
 
-        let trajectory_memory: TrajectoryMemory = self
+        Ok(self
             .cf
             .memory
             .open_memory(memory_device)
             .await
             .ok_or(UploadError(
                 "Trajectory memory already open or not found.".to_string(),
-            ))??;
-
-        let bytes_written = write_t(&trajectory_memory).await?;
-
-        self.cf.memory.close_memory(trajectory_memory).await?;
-        Ok(bytes_written)
+            ))??)
     }
 
-    async fn with_trajectory_reservation<F>(&self, f: F) -> Res<TrajectoryId>
-    where
-        F: AsyncFn(&TrajectoryState) -> Res<usize>,
-    {
-        let mut trajectory_mutex = self.trajectory_state.lock().await;
-        let current_id = TrajectoryId(trajectory_mutex.current_id.0 + 1);
-        let mut new_traj = TrajectoryState {
-            current_id,
-            offset_bytes: trajectory_mutex.offset_bytes,
-        };
-
-        let new_bytes_written = f(&new_traj).await?;
-        new_traj.offset_bytes += new_bytes_written;
-        *trajectory_mutex = new_traj;
-
-        Ok(current_id)
-    }
-
-    pub async fn upload_trajectory(&self, trajectory: &Trajectory) -> Res<TrajectoryId> {
+    pub async fn upload_trajectory(&self, trajectory: Trajectory) -> Res<TrajectoryId> {
         info!("Uploading trajectory...");
-        self.with_trajectory_reservation(
-            async |&TrajectoryState {
-                       current_id,
-                       offset_bytes,
-                   }| {
-                let bytes_written = self
-                    .write_to_mem(async |mem| {
-                        mem.write_uncompressed(&trajectory.segments, offset_bytes)
-                            .await
-                    })
-                    .await?;
+        let mut reservation = self.trajectory_state.lock().await;
+        let current_id = TrajectoryId(reservation.current_id.0 + 1);
+        let offset_bytes = reservation.offset_bytes;
 
-                // Register the uploaded trajectory under an ID the high-level commander can run.
-                info!("Defining trajectory...");
-                self.cf
-                    .high_level_commander
-                    .define_trajectory(
-                        current_id.0,
-                        offset_bytes as u32,
-                        trajectory.segments.len() as u8,
-                        Some(TRAJECTORY_TYPE_POLY4D),
-                    )
-                    .await?;
+        let memory = self.open_trajectory_memory().await?;
+        let bytes_written = memory
+            .write_uncompressed(&trajectory.segments, offset_bytes)
+            .await?;
+        self.cf.memory.close_memory(memory).await?;
 
-                Ok(bytes_written)
-            },
-        )
-        .await
+        info!("Defining trajectory...");
+        self.cf
+            .high_level_commander
+            .define_trajectory(
+                current_id.0,
+                offset_bytes as u32,
+                trajectory.segments.len() as u8,
+                Some(TRAJECTORY_TYPE_POLY4D),
+            )
+            .await?;
+
+        *reservation = TrajectoryState {
+            current_id,
+            offset_bytes: offset_bytes + bytes_written,
+        };
+        Ok(current_id)
     }
 
     pub async fn upload_compressed_trajectory(
         &self,
         CompressedTrajectory {
             start, segments, ..
-        }: &CompressedTrajectory,
+        }: CompressedTrajectory,
     ) -> Res<TrajectoryId> {
         info!("Uploading compressed trajectory...");
-        self.with_trajectory_reservation(
-            async |&TrajectoryState {
-                       current_id,
-                       offset_bytes,
-                   }| {
-                let bytes_written = self
-                    .write_to_mem(async |mem| {
-                        mem.write_compressed(start, segments, offset_bytes).await
-                    })
-                    .await?;
+        let mut reservation = self.trajectory_state.lock().await;
+        let current_id = TrajectoryId(reservation.current_id.0 + 1);
+        let offset_bytes = reservation.offset_bytes;
 
-                // Register the uploaded trajectory under an ID the high-level commander can run.
-                info!("Defining trajectory...");
-                self.cf
-                    .high_level_commander
-                    .define_trajectory(
-                        current_id.0,
-                        offset_bytes as u32,
-                        segments.len() as u8,
-                        Some(TRAJECTORY_TYPE_POLY4D_COMPRESSED),
-                    )
-                    .await?;
-                Ok(bytes_written)
-            },
-        )
-        .await
+        let memory = self.open_trajectory_memory().await?;
+        let bytes_written = memory
+            .write_compressed(&start, &segments, offset_bytes)
+            .await?;
+        self.cf.memory.close_memory(memory).await?;
+
+        info!("Defining trajectory...");
+        self.cf
+            .high_level_commander
+            .define_trajectory(
+                current_id.0,
+                offset_bytes as u32,
+                segments.len() as u8,
+                Some(TRAJECTORY_TYPE_POLY4D_COMPRESSED),
+            )
+            .await?;
+
+        *reservation = TrajectoryState {
+            current_id,
+            offset_bytes: offset_bytes + bytes_written,
+        };
+        Ok(current_id)
     }
 
     pub async fn run_trajectory(
