@@ -670,7 +670,7 @@ impl From<uplink::MissionItem> for MissionItem {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialOrd, PartialEq)]
 pub enum Abort {
     FlightTermination,
     Land,
