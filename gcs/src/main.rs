@@ -1,17 +1,14 @@
 use crate::config::{MissionStoreSettings, get_config};
-use crate::dev_unit::DevPilot;
 use crate::external::mission_service::{FileMission, HttpMission, MissionService};
 use crate::ground_data_link::vehicle_link::datalink_client;
 use crate::program::Program;
 use crossterm::terminal;
-use mission_computer::setup_link;
 use ratatea::run;
 use std::path::Path;
 use std::rc::Rc;
 use tracing::info;
 
 mod config;
-mod dev_unit;
 mod external;
 mod ground_data_link;
 mod pages;
@@ -48,32 +45,12 @@ async fn main() -> color_eyre::Result<()> {
     let vehicle_link = Rc::new(datalink_client(config.datalink.address).await?);
 
     info!("Starting up....");
-    match setup_link().await {
-        Ok(real_unit) => {
-            // selection process
-            // this needs to live for the whole program
-            let command_unit: &'static _ = Box::leak(Box::new(real_unit));
-
-            let p = Program::new(
-                command_unit,
-                vehicle_link,
-                terminal_supports_enhancements,
-                mission_loader,
-            );
-            run(p).await?;
-        }
-        _ => {
-            // fallback for dev
-            let command_unit = &DevPilot;
-            let p = Program::new(
-                command_unit,
-                vehicle_link,
-                terminal_supports_enhancements,
-                mission_loader,
-            );
-            run(p).await?;
-        }
-    };
+    run(Program::new(
+        vehicle_link,
+        terminal_supports_enhancements,
+        mission_loader,
+    ))
+    .await?;
     Ok(())
 }
 

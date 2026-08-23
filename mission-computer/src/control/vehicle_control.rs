@@ -9,9 +9,9 @@ use crate::errors::Res;
 use anyhow::Context;
 use datalink::domain_types;
 use datalink::domain_types::Abort;
-use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{error, info};
+use tokio::task::JoinHandle;
+use tracing::{error, info, warn};
 
 #[derive(Clone, Debug, PartialOrd, PartialEq)]
 enum VehicleState {
@@ -116,7 +116,7 @@ impl<A: Autopilot + Send + Sync + 'static> VehicleController<A> {
                         let _ = reply.send(Ok(()));
                     }
                     if let Some(action) = action {
-                        runner.execute(action).await;
+                        runner = runner.execute(action).await;
                     }
                     new_state
                 }
@@ -132,52 +132,76 @@ impl<A: Autopilot + Send + Sync + 'static> VehicleController<A> {
     }
 }
 
+enum RunnerState<A: Autopilot> {
+    Mission(Option<oneshot::Sender<Abort>>, JoinHandle<A>),
+    Idle(A),
+}
 struct ActionRunner<A: Autopilot> {
-    autopilot: Arc<A>,
+    state: RunnerState<A>,
     command_sender: mpsc::Sender<Message>,
-    abort: Option<oneshot::Sender<Abort>>,
 }
 
 impl<A: Autopilot + Send + Sync + 'static> ActionRunner<A> {
-    async fn execute(&mut self, a: VehicleAction) {
-        match a {
-            StartMission(mission) => {
+    async fn execute(self, a: VehicleAction) -> Self {
+        match (a, self.state) {
+            (StartMission(mission), RunnerState::Idle(mut autopilot)) => {
                 let (abort_sender, abort_rcv) = oneshot::channel();
-                self.abort = Some(abort_sender);
-                let thread_pilot = self.autopilot.clone();
                 let result_sender = self.command_sender.clone();
 
-                tokio::spawn(async move {
-                    let _ = thread_pilot
+                let handle = tokio::spawn(async move {
+                    let _ = autopilot
                         .run_mission(mission, async { abort_rcv.await.ok() })
                         .await
                         .inspect_err(|err| error!("Failed mission execution: {:?}", err));
-                    let _ = result_sender.send(Message::new(VehicleMsg::MissionFinished));
+                    let _ = result_sender
+                        .send(Message::new(VehicleMsg::MissionFinished))
+                        .await;
+                    autopilot
                 });
-            }
-            AbortMission(abort_action) => {
-                if let Some(s) = self.abort.take() {
-                    let _ = s.send(abort_action);
+
+                Self {
+                    state: RunnerState::Mission(Some(abort_sender), handle),
+                    ..self
                 }
             }
-            PostMissionCleanup => {
-                self.abort = None;
+            (StartMission(_), state @ RunnerState::Mission(_, _)) => {
+                warn!("cant start mission while running mission");
+                Self { state, ..self }
+            }
+            (AbortMission(abort_action), RunnerState::Mission(Some(abort), h)) => {
+                let _ = abort.send(abort_action);
+                Self {
+                    state: RunnerState::Mission(None, h),
+                    ..self
+                }
+            }
+            (AbortMission(_), state) => {
+                info!("cant abort idle state or aborted state");
+                Self { state, ..self }
+            }
+            (PostMissionCleanup, RunnerState::Mission(_, handle)) => {
+                let autopilot = handle.await.expect("should not fail");
+                Self {
+                    state: RunnerState::Idle(autopilot),
+                    ..self
+                }
+            }
+            (PostMissionCleanup, state) => {
+                info!("should not be cleaning up in idle state");
+                Self { state, ..self }
             }
         }
     }
 }
 
-pub fn init_vehicle_control<A: Autopilot>(
-    autopilot: Arc<A>,
-) -> (VehicleController<A>, VehicleHandle) {
+pub fn init_vehicle_control<A: Autopilot>(autopilot: A) -> (VehicleController<A>, VehicleHandle) {
     let (command_sender, command_receiver) = mpsc::channel(64);
     (
         VehicleController {
             state: Idle,
             action_runner: ActionRunner {
-                autopilot,
+                state: RunnerState::Idle(autopilot),
                 command_sender: command_sender.clone(),
-                abort: None,
             },
             command_receiver,
         },

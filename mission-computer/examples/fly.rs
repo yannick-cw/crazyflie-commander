@@ -9,13 +9,13 @@ use std::future;
 
 #[tokio::main]
 async fn main() -> Res<()> {
-    let real_unit = setup_link().await?;
-    let mission = run_mission(orbit(), &real_unit);
+    let (_, real_unit) = setup_link().await?;
+    let mission = run_mission(orbit(), real_unit);
 
     mission.await
 }
 
-async fn run_mission(mission: Vec<MissionItem>, command_unit: &impl Autopilot) -> Res<()> {
+async fn run_mission(mission: Vec<MissionItem>, mut command_unit: impl Autopilot) -> Res<()> {
     enable_raw_mode().unwrap();
 
     let mut mission_abort_event = EventStream::new().filter_map(|evt| {

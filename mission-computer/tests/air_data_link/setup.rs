@@ -1,6 +1,6 @@
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
 use datalink::downlink::stream_telemetry_server::StreamTelemetryServer;
-use mission_computer::dev_pilot::DevPilot;
+use mission_computer::dev_pilot::dev_downlink;
 use mission_computer::server::MissionServer;
 use std::error::Error;
 use std::sync::Once;
@@ -14,7 +14,7 @@ pub async fn spawn_server() -> Result<StreamTelemetryClient<Channel>, Box<dyn Er
     });
 
     let server = Server::builder().add_service(StreamTelemetryServer::new(MissionServer {
-        autopilot: DevPilot.into(),
+        vehicle_downlink: dev_downlink(),
     }));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();

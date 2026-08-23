@@ -1,4 +1,4 @@
-use crate::Autopilot;
+use crate::control::autopilot::VehicleDownlink;
 use crate::control::vehicle_control::VehicleHandle;
 use datalink::compression_adapter::compressed_grid_stream;
 use datalink::domain_types;
@@ -9,14 +9,13 @@ use datalink::downlink::{Message, MissionStatus, OccupancyGrid, VehicleHealth, V
 use datalink::uplink::uplink_service_server::UplinkService;
 use datalink::uplink::{AbortMission, Mission};
 use std::pin::Pin;
-use std::sync::Arc;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::wrappers::{BroadcastStream, WatchStream};
 use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status};
 use tracing::error;
 
-pub struct MissionServer<A: Autopilot> {
-    pub autopilot: Arc<A>,
+pub struct MissionServer {
+    pub vehicle_downlink: VehicleDownlink,
 }
 
 pub struct UplinkServer {
@@ -24,29 +23,28 @@ pub struct UplinkServer {
 }
 
 #[tonic::async_trait]
-impl<A: Autopilot + Send + Sync + 'static> StreamTelemetry for MissionServer<A> {
+impl StreamTelemetry for MissionServer {
     type StreamTelemetryStream = Pin<Box<dyn Stream<Item = Result<Message, Status>> + Send>>;
 
     async fn stream_telemetry(
         &self,
         _request: Request<()>,
     ) -> Result<Response<Self::StreamTelemetryStream>, Status> {
-        let tele_stream = BroadcastStream::new(self.autopilot.telemetry())
+        let tele_stream = BroadcastStream::new(self.vehicle_downlink.subscribe_telemetry())
             .filter_map(Result::ok)
             .map(VehicleState::from)
             .map(|state| Message {
                 msg: Some(Msg::State(state)),
             });
 
-        let health_stream = BroadcastStream::new(self.autopilot.health())
+        let health_stream = BroadcastStream::new(self.vehicle_downlink.subscribe_health())
             .filter_map(Result::ok)
             .map(VehicleHealth::from)
             .map(|state| Message {
                 msg: Some(Msg::Health(state)),
             });
 
-        let status_stream = BroadcastStream::new(self.autopilot.status())
-            .filter_map(Result::ok)
+        let status_stream = WatchStream::new(self.vehicle_downlink.subscribe_status())
             .map(MissionStatus::from)
             .map(|status| Message {
                 msg: Some(Msg::Status(status)),
@@ -62,7 +60,7 @@ impl<A: Autopilot + Send + Sync + 'static> StreamTelemetry for MissionServer<A> 
         &self,
         _: Request<()>,
     ) -> Result<Response<Self::StreamPayloadStream>, Status> {
-        let grid_stream = BroadcastStream::new(self.autopilot.grid())
+        let grid_stream = BroadcastStream::new(self.vehicle_downlink.subscribe_grid())
             .filter_map(Result::ok)
             .map(|g| {
                 let a: Vec<Vec<Cell>> = g

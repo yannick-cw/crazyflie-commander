@@ -1,7 +1,6 @@
 use crate::external::mission_service::MissionService;
 use crate::ground_data_link::vehicle_link::VehicleLink;
 use crate::pages::home::ModeSelection;
-use crate::pages::manual_control::Msg::CommandSet;
 use crate::pages::manual_control::SetpointRecording;
 use crate::pages::mission_monitor::Msg::MissionUpdate;
 use crate::pages::{home, manual_control, mission_monitor, mission_select};
@@ -10,12 +9,10 @@ use crate::view::{flight_view, home_view, mission_select_view};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use datalink::domain_types::{OccupancyGrid, Telemetry, VehicleHealth};
 use futures::StreamExt;
-use mission_computer::Autopilot;
 use ratatea::{Cmd, Ratatea, Sub};
 use ratatui::Frame;
 use std::rc::Rc;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::{UnboundedReceiverStream, WatchStream};
+use tokio_stream::wrappers::WatchStream;
 
 // model ------------------------------------------------
 #[derive(Debug)]
@@ -68,8 +65,7 @@ pub enum NavigationMessage {
     Select,
 }
 
-pub struct Program<U: Autopilot + 'static> {
-    command_unit: &'static U,
+pub struct Program {
     // needs to outlive the places it's shared to go into cmds - though not share between threads
     vehicle_link: Rc<VehicleLink>,
     terminal_supports_enhancements: bool,
@@ -77,15 +73,13 @@ pub struct Program<U: Autopilot + 'static> {
     mission_loader: Rc<dyn MissionService>,
 }
 
-impl<U: Autopilot> Program<U> {
+impl Program {
     pub fn new(
-        command_unit: &'static U,
         vehicle_link: Rc<VehicleLink>,
         terminal_supports_enhancements: bool,
         loader: Rc<dyn MissionService>,
     ) -> Self {
         Self {
-            command_unit,
             vehicle_link,
             terminal_supports_enhancements,
             mission_loader: loader,
@@ -93,7 +87,7 @@ impl<U: Autopilot> Program<U> {
     }
 }
 
-impl<U: Autopilot> Ratatea for Program<U> {
+impl Ratatea for Program {
     type Model = Model;
     type Msg = Msg;
 
@@ -112,7 +106,6 @@ impl<U: Autopilot> Ratatea for Program<U> {
     }
 
     fn update(&self, msg: Self::Msg, m: Self::Model) -> (Self::Model, Cmd<Self::Msg>) {
-        let command_unit = self.command_unit;
         let mut model: Model = m;
         match (&mut model.state, msg) {
             (_, Msg::GridUpdate(grid)) => {
@@ -158,15 +151,15 @@ impl<U: Autopilot> Ratatea for Program<U> {
                         Cmd::pure(Msg::MissionSelect(mission_select::Msg::LoadMissions)),
                     ),
                     ModeSelection::MissionPlan => (model.state, Cmd::none()),
-                    ModeSelection::ManualControl if model.terminal_supports_enhancements => {
-                        let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
-                        let commands = UnboundedReceiverStream::new(motion_receiver);
-                        let h = tokio::spawn(command_unit.fly(commands));
-                        (
-                            State::ManualControl(manual_control::Model::new(motion_sender)),
-                            Cmd::new(h, |_| Msg::ManualControl(CommandSet)),
-                        )
-                    }
+                    // ModeSelection::ManualControl if model.terminal_supports_enhancements => {
+                    //      let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
+                    //      let commands = UnboundedReceiverStream::new(motion_receiver);
+                    //      let h = tokio::spawn(command_unit.fly(commands));
+                    //      (
+                    //          State::ManualControl(manual_control::Model::new(motion_sender)),
+                    //          Cmd::new(h, |_| Msg::ManualControl(CommandSet)),
+                    //      )
+                    // }
                     ModeSelection::ManualControl => (model.state, Cmd::none()),
                 };
                 model.state = new_state;
@@ -202,9 +195,8 @@ impl<U: Autopilot> Ratatea for Program<U> {
                 (model, next_cmd)
             }
             (State::MissionExecution(state), Msg::MissionExecution(msg)) => {
-                let next_cmd =
-                    mission_monitor::update(command_unit, self.vehicle_link.clone(), state, msg)
-                        .lift_msg(Msg::MissionExecution);
+                let next_cmd = mission_monitor::update(self.vehicle_link.clone(), state, msg)
+                    .lift_msg(Msg::MissionExecution);
                 (model, next_cmd)
             }
             (State::ManualControl(state), Msg::ManualControl(msg)) => {

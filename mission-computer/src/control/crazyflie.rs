@@ -1,5 +1,5 @@
 use crate::control::autopilot::{
-    Autopilot, ManualControl, SetpointHover, health_from_log, telemetry_from_log,
+    Autopilot, ManualControl, SetpointHover, VehicleDownlink, health_from_log, telemetry_from_log,
 };
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
@@ -19,7 +19,6 @@ use datalink::domain_types::{
 };
 use futures::{Stream, StreamExt, TryFutureExt};
 use std::time::Duration;
-use tokio::sync::broadcast::Receiver;
 use tokio::sync::{broadcast, watch};
 use tokio::time::{MissedTickBehavior, sleep};
 use tokio::{select, time};
@@ -44,7 +43,7 @@ pub const STATE_ESTIMATE_YAW: &str = "stateEstimate.yaw";
 ///
 /// # Errors
 /// Fails if no drone is found or the connection or logging setup fails.
-pub async fn setup_link() -> Res<CrazyPilot> {
+pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot)> {
     let link_context = crazyflie_link::LinkContext::new();
     let found = link_context.scan([0xE7; 5]).await?;
 
@@ -138,16 +137,20 @@ pub async fn setup_link() -> Res<CrazyPilot> {
             let _ = local_watch_health.send_replace(health);
         }
     });
-    let (status_sender, _) = broadcast::channel(64);
-    let mission_status = status_sender.clone();
+    let (status_sender, _) = watch::channel(MissionStatus::Idle);
 
-    Ok(CrazyPilot {
-        vehicle: Vehicle::new(cf, sender_tx.subscribe(), health_watch.subscribe()),
-        telemetry_sender: tx,
-        health_sender,
-        grid_sender,
-        mission_status,
-    })
+    Ok((
+        VehicleDownlink::new(
+            tx.clone(),
+            health_sender,
+            status_sender.clone(),
+            grid_sender,
+        ),
+        CrazyPilot {
+            vehicle: Vehicle::new(cf, sender_tx.subscribe(), health_watch.subscribe()),
+            mission_status: status_sender,
+        },
+    ))
 }
 
 /// A connected Crazyflie driving one drone over the radio link.
@@ -156,10 +159,7 @@ pub async fn setup_link() -> Res<CrazyPilot> {
 #[derive(Debug)]
 pub struct CrazyPilot {
     vehicle: Vehicle,
-    telemetry_sender: broadcast::Sender<Telemetry>,
-    health_sender: broadcast::Sender<VehicleHealth>,
-    grid_sender: broadcast::Sender<OccupancyGrid>,
-    mission_status: broadcast::Sender<MissionStatus>,
+    mission_status: watch::Sender<MissionStatus>,
 }
 
 impl CrazyPilot {
@@ -244,7 +244,7 @@ impl CrazyPilot {
 
 impl Autopilot for CrazyPilot {
     async fn run_mission(
-        &self,
+        &mut self,
         mission: Vec<MissionItem>,
         abort_signal: impl Future<Output = Option<Abort>>,
     ) -> Res<()> {
@@ -274,7 +274,7 @@ impl Autopilot for CrazyPilot {
     }
 
     async fn upload_orbit(
-        &self,
+        &mut self,
         radius: Meters,
         orbital_period: Duration,
         orbits: usize,
@@ -286,7 +286,7 @@ impl Autopilot for CrazyPilot {
     }
 
     async fn upload_smooth_path(
-        &self,
+        &mut self,
         waypoints: Vec<Waypoint>,
         speed: MetersPerSecond,
         flight_mode: FlightMode,
@@ -296,7 +296,7 @@ impl Autopilot for CrazyPilot {
         Ok((id, t.duration))
     }
 
-    async fn fly(&self, commands: impl Stream<Item = ManualControl>) -> Res<()> {
+    async fn fly(&mut self, commands: impl Stream<Item = ManualControl>) -> Res<()> {
         tokio::pin!(commands);
 
         let mut health_tx = self.vehicle.health.clone();
@@ -363,21 +363,5 @@ impl Autopilot for CrazyPilot {
             }
         }
         Ok(())
-    }
-
-    fn telemetry(&self) -> Receiver<Telemetry> {
-        self.telemetry_sender.subscribe()
-    }
-
-    fn health(&self) -> Receiver<VehicleHealth> {
-        self.health_sender.subscribe()
-    }
-
-    fn status(&self) -> Receiver<MissionStatus> {
-        self.mission_status.subscribe()
-    }
-
-    fn grid(&self) -> Receiver<OccupancyGrid> {
-        self.grid_sender.subscribe()
     }
 }

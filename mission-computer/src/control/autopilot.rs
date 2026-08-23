@@ -13,7 +13,7 @@ use datalink::domain_types::{
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use tracing::warn;
 
 fn get_log_by_name(name: &str, l: &LogData) -> f32 {
@@ -83,12 +83,15 @@ pub enum ManualControl {
 #[allow(async_fn_in_trait)]
 pub trait Autopilot {
     fn run_mission(
-        &self,
+        &mut self,
         mission: Vec<MissionItem>,
         abort_signal: impl Future<Output = Option<Abort>> + Send,
     ) -> impl Future<Output = Res<()>> + Send;
 
-    async fn upload_command(&self, command: MissionItem) -> Res<Option<(TrajectoryId, Duration)>> {
+    async fn upload_command(
+        &mut self,
+        command: MissionItem,
+    ) -> Res<Option<(TrajectoryId, Duration)>> {
         match command {
             MissionItem::SmoothPath {
                 waypoints,
@@ -111,7 +114,7 @@ pub trait Autopilot {
     }
 
     async fn upload_orbit(
-        &self,
+        &mut self,
         radius: Meters,
         orbital_period: Duration,
         orbits: usize,
@@ -119,22 +122,54 @@ pub trait Autopilot {
     ) -> Res<(TrajectoryId, Duration)>;
 
     async fn upload_smooth_path(
-        &self,
+        &mut self,
         waypoints: Vec<Waypoint>,
         speed: MetersPerSecond,
         flight_mode: FlightMode,
     ) -> Res<(TrajectoryId, Duration)>;
 
     fn fly(
-        &self,
+        &mut self,
         commands: impl Stream<Item = ManualControl> + Send,
     ) -> impl Future<Output = Res<()>> + Send;
+}
+
+pub struct VehicleDownlink {
     // emits telemetry - is updates every 10ms
-    fn telemetry(&self) -> broadcast::Receiver<Telemetry>;
+    telemetry: broadcast::Sender<Telemetry>,
     // emits health - is updates every 1s
-    fn health(&self) -> broadcast::Receiver<VehicleHealth>;
+    health: broadcast::Sender<VehicleHealth>,
     // emits mission status - is updates every 100ms
-    fn status(&self) -> broadcast::Receiver<MissionStatus>;
+    status: watch::Sender<MissionStatus>,
     // emits latest grid - updates every 100ms
-    fn grid(&self) -> broadcast::Receiver<OccupancyGrid>;
+    grid: broadcast::Sender<OccupancyGrid>,
+}
+
+impl VehicleDownlink {
+    pub fn new(
+        telemetry: broadcast::Sender<Telemetry>,
+        health: broadcast::Sender<VehicleHealth>,
+        status: watch::Sender<MissionStatus>,
+        grid: broadcast::Sender<OccupancyGrid>,
+    ) -> Self {
+        Self {
+            telemetry,
+            health,
+            status,
+            grid,
+        }
+    }
+
+    pub fn subscribe_telemetry(&self) -> broadcast::Receiver<Telemetry> {
+        self.telemetry.subscribe()
+    }
+    pub fn subscribe_health(&self) -> broadcast::Receiver<VehicleHealth> {
+        self.health.subscribe()
+    }
+    pub fn subscribe_status(&self) -> watch::Receiver<MissionStatus> {
+        self.status.subscribe()
+    }
+    pub fn subscribe_grid(&self) -> broadcast::Receiver<OccupancyGrid> {
+        self.grid.subscribe()
+    }
 }

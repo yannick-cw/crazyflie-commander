@@ -12,11 +12,11 @@ async fn consume_telemetry() -> Result<(), Box<dyn Error>> {
     let msgs = client.stream_telemetry(()).await?.into_inner();
 
     let downlink_res: Result<Vec<_>, _> = msgs.take(5).collect().await;
-    let mut res = downlink_res.clone()?.into_iter().map(|m| m.msg.unwrap());
+    let res = downlink_res.clone()?.into_iter().map(|m| m.msg.unwrap());
 
-    let contains_health_data = res.any(|msg| matches!(msg, Msg::Health(_)));
-    let contains_state_data = res.any(|msg| matches!(msg, Msg::State(_)));
-    let contains_status_data = res.any(|msg| matches!(msg, Msg::Status(_)));
+    let contains_health_data = res.clone().any(|msg| matches!(msg, Msg::Health(_)));
+    let contains_state_data = res.clone().any(|msg| matches!(msg, Msg::State(_)));
+    let contains_status_data = res.clone().any(|msg| matches!(msg, Msg::Status(_)));
 
     assert!(contains_health_data);
     assert!(contains_state_data);

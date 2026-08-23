@@ -5,12 +5,10 @@ use crate::pages::mission_monitor::Msg::{
 use Msg::{MissionResult, MissionUpdate};
 use crossterm::event::{KeyCode, KeyEvent};
 use datalink::domain_types::{Abort, MissionItem, MissionStatus, Reason};
-use futures::{TryFutureExt, TryStreamExt, stream};
-use mission_computer::Autopilot;
+use futures::stream;
 use mission_computer::errors::{MissionError, Res};
 use ratatea::Cmd;
 use std::rc::Rc;
-use tokio_stream::StreamExt;
 use tracing::{error, warn};
 
 // model ------------------------------------
@@ -74,12 +72,7 @@ pub enum Msg {
 
 // update ------------------------------------
 
-pub fn update(
-    command_unit: &'static impl Autopilot,
-    vehicle_link: Rc<VehicleLink>,
-    model: &mut Model,
-    msg: Msg,
-) -> Cmd<Msg> {
+pub fn update(vehicle_link: Rc<VehicleLink>, model: &mut Model, msg: Msg) -> Cmd<Msg> {
     match msg {
         StartMission => {
             let mission = model.mission.clone();
@@ -116,10 +109,7 @@ pub fn update(
             if model.trajectory_upload_available()
                 && matches!(model.link_mode, ExecutionMode::Online) =>
         {
-            Cmd::new(
-                upload_mission(command_unit, model.mission.clone()),
-                Msg::MissionUploaded,
-            )
+            Cmd::new(upload_mission(model.mission.clone()), Msg::MissionUploaded)
         }
         ToggleLinkMode => Cmd::none(),
         Msg::MissionUploaded(Ok(m)) => {
@@ -165,23 +155,21 @@ pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {
     }
 }
 
-async fn upload_mission(
-    command_unit: &impl Autopilot,
-    mission: Vec<MissionItem>,
-) -> Result<Vec<MissionItem>, MissionError> {
-    stream::iter(mission)
-        .then(|c| {
-            command_unit
-                .upload_command(c.clone())
-                .map_ok(|res| match res {
-                    None => c,
-                    Some((id, duration)) => MissionItem::OnVehicleTrajectory {
-                        id,
-                        duration,
-                        original_command: Box::new(c),
-                    },
-                })
-        })
-        .try_collect::<Vec<_>>()
-        .await
+async fn upload_mission(mission: Vec<MissionItem>) -> Result<Vec<MissionItem>, MissionError> {
+    // stream::iter(mission)
+    //     .then(|c| {
+    //         command_unit
+    //             .upload_command(c.clone())
+    //             .map_ok(|res| match res {
+    //                 None => c,
+    //                 Some((id, duration)) => MissionItem::OnVehicleTrajectory {
+    //                     id,
+    //                     duration,
+    //                     original_command: Box::new(c),
+    //                 },
+    //             })
+    //     })
+    //     .try_collect::<Vec<_>>()
+    //     .await
+    Ok(vec![])
 }
