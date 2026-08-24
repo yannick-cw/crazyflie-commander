@@ -10,7 +10,7 @@
 //! use mission_computer::{setup_link, Autopilot, flight_paths::orbit};
 //!
 //! # async fn run() -> mission_computer::errors::Res<()> {
-//! let (_, mut drone) = setup_link().await?;
+//! let (_, mut drone, _) = setup_link().await?;
 //! drone.run_mission(orbit(), async { None }).await
 //! # }
 //! ```

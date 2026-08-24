@@ -266,7 +266,7 @@ mod tests {
             _orbits: usize,
             _z: Meters,
         ) -> Res<(TrajectoryId, Duration)> {
-            todo!()
+            Ok((TrajectoryId(12), Duration::from_millis(100)))
         }
         async fn upload_smooth_path(
             &mut self,
@@ -407,5 +407,38 @@ mod tests {
         let _ = step_sender.send(()).await;
 
         assert_status(&mut rec, VehicleStatus::Idle).await;
+    }
+
+    #[tokio::test]
+    async fn only_upload_mission_when_idle() {
+        let (mut rec, handle, step_sender, _) = test_setup();
+        assert_status(&mut rec, VehicleStatus::Idle).await;
+        handle
+            .upload_mission_item(mission()[0].clone())
+            .await
+            .expect("upload works");
+
+        assert_status(&mut rec, VehicleStatus::Idle).await;
+
+        handle.submit_mission(mission()).await.expect("runs fine");
+        assert_status(&mut rec, VehicleStatus::MissionRunning(None)).await;
+
+        let upload_failed = handle.upload_mission_item(mission()[0].clone()).await;
+        assert_matches!(upload_failed, Err(_));
+
+        handle.abort_mission(Abort::Land).await.expect("aborted");
+        assert_status(&mut rec, VehicleStatus::Landing).await;
+
+        let upload_failed = handle.upload_mission_item(mission()[0].clone()).await;
+        assert_matches!(upload_failed, Err(_));
+
+        // finish landing
+        let _ = step_sender.send(()).await;
+        assert_status(&mut rec, VehicleStatus::Idle).await;
+
+        handle
+            .upload_mission_item(mission()[0].clone())
+            .await
+            .expect("upload works");
     }
 }

@@ -45,6 +45,8 @@ pub const STATE_ESTIMATE_YAW: &str = "stateEstimate.yaw";
 /// # Errors
 /// Fails if no drone is found or the connection or logging setup fails.
 pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot, mpsc::Receiver<ProgressEvent>)> {
+    // todo improve channel logic dependencies between things (maybe `runMission` can expose prgress report?
+    // run mission just exposes stream of ProgressEvent with mission complete at the end... easier
     let link_context = crazyflie_link::LinkContext::new();
     let found = link_context.scan([0xE7; 5]).await?;
 

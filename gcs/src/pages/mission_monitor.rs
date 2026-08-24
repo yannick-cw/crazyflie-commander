@@ -5,9 +5,11 @@ use crate::pages::mission_monitor::Msg::{
 use Msg::{MissionResult, MissionUpdate};
 use crossterm::event::{KeyCode, KeyEvent};
 use datalink::domain_types::{Abort, MissionItem, VehicleStatus};
+use futures::{TryFutureExt, TryStreamExt};
 use mission_computer::errors::{MissionError, Res};
 use ratatea::Cmd;
 use std::rc::Rc;
+use tokio_stream::StreamExt;
 use tracing::{error, warn};
 
 // model ------------------------------------
@@ -107,7 +109,10 @@ pub fn update(vehicle_link: Rc<VehicleLink>, model: &mut Model, msg: Msg) -> Cmd
             if model.trajectory_upload_available()
                 && matches!(model.link_mode, ExecutionMode::Online) =>
         {
-            Cmd::new(upload_mission(model.mission.clone()), Msg::MissionUploaded)
+            Cmd::new(
+                upload_mission(vehicle_link, model.mission.clone()),
+                Msg::MissionUploaded,
+            )
         }
         ToggleLinkMode => Cmd::none(),
         Msg::MissionUploaded(Ok(m)) => {
@@ -152,21 +157,23 @@ pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {
     }
 }
 
-async fn upload_mission(mission: Vec<MissionItem>) -> Result<Vec<MissionItem>, MissionError> {
-    // stream::iter(mission)
-    //     .then(|c| {
-    //         command_unit
-    //             .upload_command(c.clone())
-    //             .map_ok(|res| match res {
-    //                 None => c,
-    //                 Some((id, duration)) => MissionItem::OnVehicleTrajectory {
-    //                     id,
-    //                     duration,
-    //                     original_command: Box::new(c),
-    //                 },
-    //             })
-    //     })
-    //     .try_collect::<Vec<_>>()
-    //     .await
-    Ok(vec![])
+async fn upload_mission(
+    vehicle_link: Rc<VehicleLink>,
+    mission: Vec<MissionItem>,
+) -> Result<Vec<MissionItem>, MissionError> {
+    tokio_stream::iter(mission)
+        .then(|c| {
+            vehicle_link
+                .upload_mission(c.clone())
+                .map_ok(|res| match res {
+                    None => c,
+                    Some((id, duration)) => MissionItem::OnVehicleTrajectory {
+                        id,
+                        duration: duration.into(),
+                        original_command: Box::new(c),
+                    },
+                })
+        })
+        .try_collect::<Vec<_>>()
+        .await
 }
