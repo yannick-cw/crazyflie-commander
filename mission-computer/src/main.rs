@@ -1,9 +1,11 @@
+use datalink::domain_types::VehicleStatus;
 use datalink::downlink::stream_telemetry_server::StreamTelemetryServer;
 use datalink::uplink::uplink_service_server::UplinkServiceServer;
 use mission_computer::dev_pilot::{DevPilot, dev_downlink};
 use mission_computer::server::{MissionServer, UplinkServer};
 use mission_computer::{init_vehicle_control, setup_link};
 use std::net::SocketAddr;
+use tokio::sync::{mpsc, watch};
 use tonic::transport::Server;
 use tracing::info;
 
@@ -13,8 +15,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     info!("Starting up....");
     let (server, _handle) = match setup_link().await {
-        Ok((vehicle_downlink, real_unit)) => {
-            let (control, vehicle_handle) = init_vehicle_control(real_unit);
+        Ok((vehicle_downlink, real_unit, prg_rec)) => {
+            let status_publish = vehicle_downlink.status.clone();
+            let (control, vehicle_handle) =
+                init_vehicle_control(real_unit, status_publish, prg_rec);
             (
                 Server::builder()
                     .add_service(StreamTelemetryServer::new(MissionServer {
@@ -26,7 +30,9 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         _ => {
             // fallback for dev
-            let (control, vehicle_handle) = init_vehicle_control(DevPilot);
+            let dummy_sender = watch::channel(VehicleStatus::Idle).0;
+            let (control, vehicle_handle) =
+                init_vehicle_control(DevPilot, dummy_sender, mpsc::channel(64).1);
             (
                 Server::builder()
                     .add_service(StreamTelemetryServer::new(MissionServer {

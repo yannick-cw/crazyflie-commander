@@ -4,8 +4,7 @@ use crate::pages::mission_monitor::Msg::{
 };
 use Msg::{MissionResult, MissionUpdate};
 use crossterm::event::{KeyCode, KeyEvent};
-use datalink::domain_types::{Abort, MissionItem, MissionStatus, Reason};
-use futures::stream;
+use datalink::domain_types::{Abort, MissionItem, VehicleStatus};
 use mission_computer::errors::{MissionError, Res};
 use ratatea::Cmd;
 use std::rc::Rc;
@@ -16,7 +15,7 @@ use tracing::{error, warn};
 pub struct Model {
     pub mission: Vec<MissionItem>,
     pub name: String,
-    pub mission_status: MissionStatus,
+    pub mission_status: VehicleStatus,
     pub link_mode: ExecutionMode,
 }
 impl Model {
@@ -24,14 +23,13 @@ impl Model {
         Self {
             mission,
             name,
-            mission_status: MissionStatus::Idle,
+            mission_status: VehicleStatus::Idle,
             link_mode: ExecutionMode::Online,
         }
     }
 
     pub fn trajectory_upload_available(&self) -> bool {
-        let grounded = self.mission_status == MissionStatus::Idle
-            || self.mission_status == MissionStatus::Aborted(Reason::Landing);
+        let grounded = self.mission_status == VehicleStatus::Idle;
         self.mission.iter().any(MissionItem::can_upload_trajectory) && grounded
     }
 
@@ -64,7 +62,7 @@ pub enum Msg {
     MissionResult(Res<()>),
     SafeLand,
     EmergencyAbort,
-    MissionUpdate(MissionStatus),
+    MissionUpdate(VehicleStatus),
     ExitPage,
     ToggleLinkMode,
     MissionUploaded(Res<Vec<MissionItem>>),
@@ -134,8 +132,7 @@ fn abort_mission(link: Rc<VehicleLink>, signal: Abort) -> Cmd<Msg> {
 }
 
 pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {
-    let grounded = s.mission_status == MissionStatus::Idle
-        || s.mission_status == MissionStatus::Aborted(Reason::Landing);
+    let grounded = s.mission_status == VehicleStatus::Idle;
 
     match k.code {
         KeyCode::Char('l') if k.is_press() => Cmd::pure(SafeLand),
@@ -146,7 +143,7 @@ pub fn map_key_evt(k: KeyEvent, s: &Model) -> Cmd<Msg> {
             if k.is_press()
                 && matches!(
                     s.mission_status,
-                    MissionStatus::Idle | MissionStatus::Aborted(_)
+                    VehicleStatus::Idle | VehicleStatus::Aborted(_)
                 ) =>
         {
             Cmd::pure(ExitPage)

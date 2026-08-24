@@ -5,7 +5,7 @@ use crate::view::occupancy_map::OccupancyMap;
 use crate::view::view_common::theme::*;
 use crate::view::view_common::{controls, panel, shell};
 use datalink::domain_types::{
-    Meters, MissionItem, MissionStatus, Setpoint, Telemetry, VehicleHealth,
+    Meters, MissionItem, Setpoint, Telemetry, VehicleHealth, VehicleStatus,
 };
 use ratatui::{
     Frame,
@@ -43,7 +43,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
     };
     // the back-to-menu hint only makes sense once the mission is no longer running
     let show_back =
-        matches!(mission, Some(s) if !matches!(s.mission_status, MissionStatus::Running(_)));
+        matches!(mission, Some(s) if !matches!(s.mission_status, VehicleStatus::MissionRunning(_)));
     // link-mode toggle is only offered when grounded and a command supports trajectory upload
     let show_upload_toggle = show_back && mission.is_some_and(|s| s.trajectory_upload_available());
 
@@ -147,18 +147,21 @@ fn mission_bar(mission: Option<&mission_monitor::Model>) -> Gauge<'static> {
         Some(s) => {
             let title = format!(" MISSION · {} ", s.name);
             match &s.mission_status {
-                MissionStatus::Idle => (title, 0.0, "idle".to_string(), LABEL),
-                MissionStatus::Running(None) => (title, 0.0, "starting…".to_string(), MISSION),
-                MissionStatus::Running(Some(p)) => {
+                VehicleStatus::Idle => (title, 0.0, "idle".to_string(), LABEL),
+                VehicleStatus::MissionRunning(None) => {
+                    (title, 0.0, "starting…".to_string(), MISSION)
+                }
+                VehicleStatus::MissionRunning(Some(p)) => {
                     let ratio = p.command_num as f64 / p.total_commands.max(1) as f64;
                     let step = format!("{:?}", p.current_command);
                     let step = step.split([' ', '{']).next().unwrap_or(&step);
                     let label = format!("{step} · {}/{}", p.command_num, p.total_commands);
                     (title, ratio, label, MISSION)
                 }
-                MissionStatus::Aborted(reason) => {
+                VehicleStatus::Aborted(reason) => {
                     (title, 1.0, format!("aborted · {reason:?}"), DANGER)
                 }
+                VehicleStatus::Landing => (title, 0.0, "landing".to_string(), LABEL),
             }
         }
     };
@@ -284,7 +287,7 @@ fn map(
     // preview the full route only in a take-off-ready state (idle / aborted)
     let preflight = matches!(
         mission.map(|m| &m.mission_status),
-        Some(MissionStatus::Idle | MissionStatus::Aborted(_))
+        Some(VehicleStatus::Idle | VehicleStatus::Aborted(_))
     );
     let path = if preflight {
         mission
@@ -474,7 +477,7 @@ fn waypoints(mission: &[MissionItem]) -> Vec<(f64, f64)> {
 
 fn current_index(mission: &mission_monitor::Model) -> Option<usize> {
     match &mission.mission_status {
-        MissionStatus::Running(Some(p)) => Some(p.command_num),
+        VehicleStatus::MissionRunning(Some(p)) => Some(p.command_num),
         _ => None,
     }
 }

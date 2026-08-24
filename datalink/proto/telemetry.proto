@@ -45,16 +45,17 @@ message MissionStatus {
   }
   message Aborted {
     enum Reason {
-      Landing = 0;
-      HardStop = 1;
-      LowBattery = 2;
+      HardStop = 0;
+      LowBattery = 1;
     }
     Reason reason = 1;
   }
   message Idle {}
+  message Landing {}
   oneof status {
     Idle idle = 1;
     Running running = 2;
     Aborted aborted = 3;
+    Landing landing = 4;
   }
 }

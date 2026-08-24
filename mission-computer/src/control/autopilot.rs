@@ -7,8 +7,8 @@ use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
 use datalink::domain_types::{
-    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus,
-    Telemetry, TrajectoryId, VehicleHealth, Waypoint,
+    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, Telemetry, TrajectoryId,
+    VehicleHealth, VehicleStatus, Waypoint,
 };
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -140,7 +140,7 @@ pub struct VehicleDownlink {
     // emits health - is updates every 1s
     health: broadcast::Sender<VehicleHealth>,
     // emits mission status - is updates every 100ms
-    status: watch::Sender<MissionStatus>,
+    pub status: watch::Sender<VehicleStatus>,
     // emits latest grid - updates every 100ms
     grid: broadcast::Sender<OccupancyGrid>,
 }
@@ -149,7 +149,7 @@ impl VehicleDownlink {
     pub fn new(
         telemetry: broadcast::Sender<Telemetry>,
         health: broadcast::Sender<VehicleHealth>,
-        status: watch::Sender<MissionStatus>,
+        status: watch::Sender<VehicleStatus>,
         grid: broadcast::Sender<OccupancyGrid>,
     ) -> Self {
         Self {
@@ -166,7 +166,7 @@ impl VehicleDownlink {
     pub fn subscribe_health(&self) -> broadcast::Receiver<VehicleHealth> {
         self.health.subscribe()
     }
-    pub fn subscribe_status(&self) -> watch::Receiver<MissionStatus> {
+    pub fn subscribe_status(&self) -> watch::Receiver<VehicleStatus> {
         self.status.subscribe()
     }
     pub fn subscribe_grid(&self) -> broadcast::Receiver<OccupancyGrid> {

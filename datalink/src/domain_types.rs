@@ -2,6 +2,7 @@ use crate::downlink::KeyframeGrid as RawKeyframe;
 use crate::downlink::MissionStatus as RawStatus;
 use crate::downlink::changed_cells::ChangedCell;
 use crate::downlink::keyframe_grid::ListOfCells;
+use crate::downlink::mission_status::Status;
 use crate::downlink::mission_status::aborted::Reason as RawReason;
 use crate::downlink::mission_status::running::Progress as RawProgress;
 use crate::downlink::{VehicleHealth as RawHealth, vehicle_health};
@@ -176,44 +177,49 @@ impl From<VehicleState> for Telemetry {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, PartialOrd, Serialize, Deserialize)]
-pub enum MissionStatus {
+pub enum VehicleStatus {
     #[default]
     Idle,
-    Running(Option<Progress>),
+    Landing,
+    MissionRunning(Option<Progress>),
     Aborted(Reason),
 }
 
-impl From<MissionStatus> for RawStatus {
-    fn from(value: MissionStatus) -> Self {
+impl From<VehicleStatus> for RawStatus {
+    fn from(value: VehicleStatus) -> Self {
         Self {
             status: Some(match value {
-                MissionStatus::Idle => mission_status::Status::Idle(mission_status::Idle {}),
-                MissionStatus::Running(progress) => {
+                VehicleStatus::Idle => mission_status::Status::Idle(mission_status::Idle {}),
+                VehicleStatus::MissionRunning(progress) => {
                     mission_status::Status::Running(mission_status::Running {
                         p: progress.map(|p| p.into()),
                     })
                 }
-                MissionStatus::Aborted(reason) => {
+                VehicleStatus::Aborted(reason) => {
                     mission_status::Status::Aborted(mission_status::Aborted {
                         reason: mission_status::aborted::Reason::from(reason).into(),
                     })
+                }
+                VehicleStatus::Landing => {
+                    mission_status::Status::Landing(mission_status::Landing {})
                 }
             }),
         }
     }
 }
 
-impl From<RawStatus> for MissionStatus {
+impl From<RawStatus> for VehicleStatus {
     fn from(value: RawStatus) -> Self {
         match value.status {
-            None => MissionStatus::Idle,
-            Some(mission_status::Status::Idle(_)) => MissionStatus::Idle,
+            None => VehicleStatus::Idle,
+            Some(mission_status::Status::Idle(_)) => VehicleStatus::Idle,
             Some(mission_status::Status::Running(running)) => {
-                MissionStatus::Running(running.p.map(|p| p.into()))
+                VehicleStatus::MissionRunning(running.p.map(|p| p.into()))
             }
             Some(mission_status::Status::Aborted(aborted)) => {
-                MissionStatus::Aborted(aborted.reason().into())
+                VehicleStatus::Aborted(aborted.reason().into())
             }
+            Some(Status::Landing(_)) => VehicleStatus::Landing,
         }
     }
 }
@@ -253,7 +259,6 @@ impl From<RawProgress> for Progress {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Reason {
-    Landing,
     HardStop,
     LowBattery,
 }
@@ -261,7 +266,6 @@ pub enum Reason {
 impl From<RawReason> for Reason {
     fn from(value: RawReason) -> Self {
         match value {
-            RawReason::Landing => Reason::Landing,
             RawReason::HardStop => Reason::HardStop,
             RawReason::LowBattery => Reason::LowBattery,
         }
@@ -271,7 +275,6 @@ impl From<RawReason> for Reason {
 impl From<Reason> for RawReason {
     fn from(value: Reason) -> Self {
         match value {
-            Reason::Landing => RawReason::Landing,
             Reason::HardStop => RawReason::HardStop,
             Reason::LowBattery => RawReason::LowBattery,
         }

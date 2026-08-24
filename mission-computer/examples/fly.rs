@@ -9,7 +9,7 @@ use std::future;
 
 #[tokio::main]
 async fn main() -> Res<()> {
-    let (_, real_unit) = setup_link().await?;
+    let (_, real_unit, _) = setup_link().await?;
     let mission = run_mission(orbit(), real_unit);
 
     mission.await

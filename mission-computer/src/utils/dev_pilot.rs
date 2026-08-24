@@ -2,8 +2,8 @@ use crate::control::autopilot::VehicleDownlink;
 use crate::errors::Res;
 use crate::{Autopilot, ManualControl, OccupancyGrid};
 use datalink::domain_types::{
-    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus, Progress,
-    Telemetry, TrajectoryId, VehicleHealth, Waypoint,
+    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, Progress, Telemetry,
+    TrajectoryId, VehicleHealth, VehicleStatus, Waypoint,
 };
 use futures::Stream;
 use std::time::Duration;
@@ -84,7 +84,7 @@ pub fn dev_downlink() -> VehicleDownlink {
             sender
         },
         {
-            let (sender, _receiver) = watch::channel(MissionStatus::Idle);
+            let (sender, _receiver) = watch::channel(VehicleStatus::Idle);
             let s = sender.clone();
             spawn(async move {
                 loop {
@@ -96,10 +96,10 @@ pub fn dev_downlink() -> VehicleDownlink {
                             command_num: i,
                             total_commands: commands.len(),
                         };
-                        let _ = s.send(MissionStatus::Running(Some(progress)));
+                        let _ = s.send(VehicleStatus::MissionRunning(Some(progress)));
                         ticks.tick().await;
                     }
-                    let _ = s.send(MissionStatus::Idle);
+                    let _ = s.send(VehicleStatus::Idle);
                     ticks.tick().await;
                 }
             });

@@ -1,5 +1,5 @@
 use datalink::compression_adapter::decompressed_grid_stream;
-use datalink::domain_types::{Abort, MissionItem, MissionStatus, Telemetry, VehicleHealth};
+use datalink::domain_types::{Abort, MissionItem, Telemetry, VehicleHealth, VehicleStatus};
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
 use datalink::uplink::uplink_service_client::UplinkServiceClient;
 use datalink::{domain_types, downlink, uplink};
@@ -20,7 +20,7 @@ pub async fn datalink_client(address: Uri) -> color_eyre::Result<VehicleLink> {
     let local_sender = latest_telemetry.clone();
     let (latest_health, _) = watch::channel(VehicleHealth::default());
     let local_health = latest_health.clone();
-    let (latest_status, _) = watch::channel(MissionStatus::default());
+    let (latest_status, _) = watch::channel(VehicleStatus::default());
     let local_status = latest_status.clone();
     let (latest_grid, _) = watch::channel(vec![]);
     let local_grid = latest_grid.clone();
@@ -85,7 +85,7 @@ pub async fn datalink_client(address: Uri) -> color_eyre::Result<VehicleLink> {
 pub struct VehicleLink {
     pub latest_telemetry: watch::Sender<Telemetry>,
     pub latest_health: watch::Sender<VehicleHealth>,
-    pub latest_status: watch::Sender<MissionStatus>,
+    pub latest_status: watch::Sender<VehicleStatus>,
     pub latest_grid: watch::Sender<domain_types::OccupancyGrid>,
     uplink_client: UplinkServiceClient<Channel>,
 }

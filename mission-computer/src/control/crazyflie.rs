@@ -8,18 +8,19 @@ use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::trajectory::orbit_trajectory::orbit_to_trajectory;
 use crate::control::trajectory::setpoint_trajectory::waypoints_to_trajectory;
 use crate::control::vehicle::Vehicle;
+use crate::control::vehicle_control::ProgressEvent;
 use crate::occupancy::grid::{OccupancyGrid, update_grid};
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use datalink::domain_types::{
-    Abort, FlightMode, Meters, MetersPerSecond, MissionItem, MissionStatus, Progress, Reason,
-    Telemetry, TrajectoryId, VehicleHealth, Waypoint,
+    Abort, FlightMode, Meters, MetersPerSecond, MissionItem, Progress, Telemetry, TrajectoryId,
+    VehicleHealth, VehicleStatus, Waypoint,
 };
 use futures::{Stream, StreamExt, TryFutureExt};
 use std::time::Duration;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 use tokio::time::{MissedTickBehavior, sleep};
 use tokio::{select, time};
 use tracing::info;
@@ -43,7 +44,7 @@ pub const STATE_ESTIMATE_YAW: &str = "stateEstimate.yaw";
 ///
 /// # Errors
 /// Fails if no drone is found or the connection or logging setup fails.
-pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot)> {
+pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot, mpsc::Receiver<ProgressEvent>)> {
     let link_context = crazyflie_link::LinkContext::new();
     let found = link_context.scan([0xE7; 5]).await?;
 
@@ -137,19 +138,16 @@ pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot)> {
             let _ = local_watch_health.send_replace(health);
         }
     });
-    let (status_sender, _) = watch::channel(MissionStatus::Idle);
+    let (status_sender, _) = watch::channel(VehicleStatus::Idle);
+    let (progress_sender, progress_receiver) = mpsc::channel(64);
 
     Ok((
-        VehicleDownlink::new(
-            tx.clone(),
-            health_sender,
-            status_sender.clone(),
-            grid_sender,
-        ),
+        VehicleDownlink::new(tx.clone(), health_sender, status_sender, grid_sender),
         CrazyPilot {
             vehicle: Vehicle::new(cf, sender_tx.subscribe(), health_watch.subscribe()),
-            mission_status: status_sender,
+            mission_status: progress_sender,
         },
+        progress_receiver,
     ))
 }
 
@@ -159,7 +157,7 @@ pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot)> {
 #[derive(Debug)]
 pub struct CrazyPilot {
     vehicle: Vehicle,
-    mission_status: watch::Sender<MissionStatus>,
+    pub mission_status: mpsc::Sender<ProgressEvent>,
 }
 
 impl CrazyPilot {
@@ -171,11 +169,12 @@ impl CrazyPilot {
         for (i, command) in mission.into_iter().enumerate() {
             let _ = self
                 .mission_status
-                .send(MissionStatus::Running(Some(Progress {
+                .send(ProgressEvent::Progress(Progress {
                     current_command: format!("{:?}", command),
                     command_num: i,
                     total_commands,
-                })));
+                }))
+                .await;
 
             match command {
                 MissionItem::Takeoff { height, duration } => {
@@ -221,21 +220,11 @@ impl CrazyPilot {
             Abort::FlightTermination => {
                 info!("HARD STOP..");
                 self.vehicle.emergency_stop().await?;
-
-                let _ = self
-                    .mission_status
-                    .send(MissionStatus::Aborted(Reason::HardStop));
-
                 Ok(())
             }
             Abort::Land => {
                 info!("Abort Land..");
                 self.vehicle.return_home().await?;
-
-                let _ = self
-                    .mission_status
-                    .send(MissionStatus::Aborted(Reason::Landing));
-
                 Ok(())
             }
         }
@@ -255,8 +244,6 @@ impl Autopilot for CrazyPilot {
         select! {
             mission = self.start_mission(mission) => {
                 info!("Mission complete");
-                let _ = self.mission_status
-                    .send(MissionStatus::Idle);
                 mission?
             }
             Some(abort) = abort_signal => {
@@ -264,10 +251,9 @@ impl Autopilot for CrazyPilot {
             }
             _ = is_low_bat=> {
                 info!("Low battery - returning home");
-                self.vehicle.return_home().await?;
-
                 let _ = self.mission_status
-                    .send(MissionStatus::Aborted(Reason::Landing));
+                    .send(ProgressEvent::LowBatLanding).await;
+                self.vehicle.return_home().await?;
             }
         }
         Ok(())
