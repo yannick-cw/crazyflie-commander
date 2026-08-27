@@ -1,4 +1,5 @@
 use crate::Autopilot;
+use crate::control::autopilot::ProgressEvent;
 use crate::control::vehicle_control::VehicleState::{
     ExecutingMission, HardStopped, Idle, Landing, LowBatteryStopped,
 };
@@ -7,18 +8,14 @@ use crate::errors::Res;
 use anyhow::Context;
 use datalink::domain_types;
 use datalink::domain_types::{Abort, Progress, Reason, TrajectoryId, VehicleStatus};
+use futures::FutureExt;
+use futures::StreamExt;
 use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::error;
-
-#[derive(Debug, Clone)]
-pub enum ProgressEvent {
-    Progress(Progress),
-    LowBatLanding,
-}
 
 enum LandingTrigger {
     ManualLanding,
@@ -58,7 +55,6 @@ impl<A: Autopilot> VehicleState<A> {
 enum Message {
     RunMission(Vec<domain_types::MissionItem>, oneshot::Sender<Res<()>>),
     AbortCommand(Abort, oneshot::Sender<Res<()>>),
-    MissionFinished,
     UploadMissionItem(
         domain_types::MissionItem,
         oneshot::Sender<Res<Option<(TrajectoryId, Duration)>>>,
@@ -106,27 +102,26 @@ impl VehicleHandle {
 pub struct VehicleController<A: Autopilot> {
     state: VehicleState<A>,
     command_receiver: mpsc::Receiver<Message>,
-    command_sender: mpsc::Sender<Message>,
+    progress_sender: mpsc::Sender<ProgressEvent>,
+    progress_receiver: mpsc::Receiver<ProgressEvent>,
     status_updates: watch::Sender<VehicleStatus>,
-    status_reports: mpsc::Receiver<ProgressEvent>,
 }
 
-impl<A: Autopilot + Send + Sync + 'static> VehicleController<A> {
+impl<A: Autopilot + Send + 'static> VehicleController<A> {
     async fn handle_msg(
         cmd: Message,
         state: VehicleState<A>,
-        cmd_sender: mpsc::Sender<Message>,
+        progress_sender: mpsc::Sender<ProgressEvent>,
     ) -> VehicleState<A> {
         match (cmd, state) {
             (Message::RunMission(mission, reply), Idle(mut autopilot)) => {
                 let (abort_sender, abort_rcv) = oneshot::channel();
 
                 let handle = tokio::spawn(async move {
-                    let _ = autopilot
+                    autopilot
                         .run_mission(mission, async { abort_rcv.await.ok() })
-                        .await
-                        .inspect_err(|err| error!("Failed mission execution: {:?}", err));
-                    let _ = cmd_sender.send(Message::MissionFinished).await;
+                        .for_each(|p_evt| progress_sender.send(p_evt).map(|_| ()))
+                        .await;
                     autopilot
                 });
                 let _ = reply.send(Ok(()));
@@ -141,48 +136,39 @@ impl<A: Autopilot + Send + Sync + 'static> VehicleController<A> {
                 let _ = reply.send(Ok(()));
                 new_state
             }
-            (Message::MissionFinished, ExecutingMission(_, handle, _)) => {
-                let autopilot = handle.await.expect("should not fail");
-                Idle(autopilot)
-            }
-            (Message::MissionFinished, Landing(handle, LandingTrigger::ManualLanding)) => {
-                let autopilot = handle.await.expect("should not fail");
-                Idle(autopilot)
-            }
-            (Message::MissionFinished, Landing(_, LandingTrigger::LowBatLanding)) => {
-                LowBatteryStopped
-            }
-            (Message::MissionFinished, state) => state,
             (Message::UploadMissionItem(item, reply), Idle(mut autopilot)) => {
                 let res = autopilot.upload_command(item).await;
                 let _ = reply.send(res);
                 Idle(autopilot)
             }
-            (Message::RunMission(_, reply), s) => {
+            (Message::RunMission(_, reply), state) => {
                 let _ = reply.send(Err(StateError(format!(
                     "Can't start mission when in {:?} state",
-                    s
+                    state
                 ))));
-                s
+                state
             }
-            (Message::UploadMissionItem(_, reply), s) => {
+            (Message::UploadMissionItem(_, reply), state) => {
                 let _ = reply.send(Err(StateError(format!(
                     "Can't upload mission when in {:?} state",
-                    s
+                    state
                 ))));
-                s
+                state
             }
-            (Message::AbortCommand(_, reply), s) => {
+            (Message::AbortCommand(_, reply), state) => {
                 let _ = reply.send(Err(StateError(format!(
                     "Can't abort mission when in {:?} state",
-                    s
+                    state
                 ))));
-                s
+                state
             }
         }
     }
 
-    fn handle_progress_update(update: ProgressEvent, state: VehicleState<A>) -> VehicleState<A> {
+    async fn handle_progress_update(
+        update: ProgressEvent,
+        state: VehicleState<A>,
+    ) -> VehicleState<A> {
         match (update, state) {
             (ProgressEvent::LowBatLanding, ExecutingMission(_, h, _) | Landing(h, _)) => {
                 Landing(h, LandingTrigger::LowBatLanding)
@@ -192,24 +178,47 @@ impl<A: Autopilot + Send + Sync + 'static> VehicleController<A> {
                 ExecutingMission(a, h, Some(progress))
             }
             (ProgressEvent::Progress(_), state) => state,
+            (
+                ProgressEvent::FailedMission(err),
+                ExecutingMission(_, h, _) | Landing(h, LandingTrigger::ManualLanding),
+            ) => {
+                error!("Failed mission {:?}", err);
+                Idle(h.await.expect(""))
+            }
+            (ProgressEvent::FailedMission(err), Landing(_, LandingTrigger::LowBatLanding)) => {
+                error!("Failed mission {:?}", err);
+                LowBatteryStopped
+            }
+            (ProgressEvent::FailedMission(err), state) => {
+                error!("Failed mission {:?}", err);
+                state
+            }
+            (
+                ProgressEvent::MissionComplete,
+                ExecutingMission(_, h, _) | Landing(h, LandingTrigger::ManualLanding),
+            ) => Idle(h.await.expect("")),
+            (ProgressEvent::MissionComplete, Landing(_, LandingTrigger::LowBatLanding)) => {
+                LowBatteryStopped
+            }
+            (ProgressEvent::MissionComplete, state) => state,
         }
     }
 
     pub async fn run(self) {
         let mut receiver = self.command_receiver;
         let mut current_state = self.state;
-        let command_sender = self.command_sender;
-        let mut progress_update = self.status_reports;
+        let progress_sender = self.progress_sender;
+        let mut progress_update = self.progress_receiver;
 
         loop {
             select! {
                 Some(progress_update) = progress_update.recv() => {
-                    let new_state = Self::handle_progress_update(progress_update, current_state);
+                    let new_state = Self::handle_progress_update(progress_update, current_state).await;
                     let _ = self.status_updates.send(new_state.as_vehicle_status());
                     current_state = new_state
                 },
                 Some(cmd) = receiver.recv() => {
-                    let new_state = Self::handle_msg(cmd, current_state, command_sender.clone()).await;
+                    let new_state = Self::handle_msg(cmd, current_state, progress_sender.clone()).await;
                     let _ = self.status_updates.send(new_state.as_vehicle_status());
                     current_state = new_state
                 }
@@ -221,16 +230,16 @@ impl<A: Autopilot + Send + Sync + 'static> VehicleController<A> {
 pub fn init_vehicle_control<A: Autopilot>(
     autopilot: A,
     status_updates: watch::Sender<VehicleStatus>,
-    status_reports: mpsc::Receiver<ProgressEvent>,
 ) -> (VehicleController<A>, VehicleHandle) {
     let (command_sender, command_receiver) = mpsc::channel(64);
+    let (progress_sender, progress_receiver) = mpsc::channel(64);
     (
         VehicleController {
             state: Idle(autopilot),
             command_receiver,
-            command_sender: command_sender.clone(),
+            progress_sender,
+            progress_receiver,
             status_updates,
-            status_reports,
         },
         VehicleHandle { command_sender },
     )
@@ -245,18 +254,41 @@ mod tests {
     use std::assert_matches;
     use tokio::time::timeout;
 
+    #[derive(Debug, Clone)]
+    enum TestStep {
+        LowBat,
+        Success,
+    }
     struct TestPilot {
-        step_mission: mpsc::Receiver<()>,
+        step_mission: mpsc::Receiver<TestStep>,
     }
 
     impl Autopilot for TestPilot {
-        async fn run_mission(
+        fn run_mission(
             &mut self,
             _mission: Vec<MissionItem>,
             _abort_signal: impl Future<Output = Option<Abort>> + Send,
-        ) -> Res<()> {
-            self.step_mission.recv().await;
-            Ok(())
+        ) -> impl Stream<Item = ProgressEvent> {
+            // steps through test commands - produces `None` when `MissionComplete`
+            // sent for the first time -- `step_mission` stays alive for next test call
+            futures::stream::unfold(
+                (&mut self.step_mission, false),
+                |(stepper, is_done)| async move {
+                    if is_done {
+                        None
+                    } else {
+                        match stepper.recv().await {
+                            None => None,
+                            Some(TestStep::Success) => {
+                                Some((ProgressEvent::MissionComplete, (stepper, true)))
+                            }
+                            Some(TestStep::LowBat) => {
+                                Some((ProgressEvent::LowBatLanding, (stepper, false)))
+                            }
+                        }
+                    }
+                },
+            )
         }
 
         async fn upload_orbit(
@@ -287,24 +319,16 @@ mod tests {
     fn test_setup() -> (
         watch::Receiver<VehicleStatus>,
         VehicleHandle,
-        mpsc::Sender<()>,
-        mpsc::Sender<ProgressEvent>,
+        mpsc::Sender<TestStep>,
     ) {
         let (send, rec) = watch::channel(VehicleStatus::Idle);
-        let (send_prg, progress) = mpsc::channel(64);
 
-        let (step_sender, step_receiver) = mpsc::channel(64);
-        let (controller, handle) = init_vehicle_control(
-            TestPilot {
-                step_mission: step_receiver,
-            },
-            send,
-            progress,
-        );
+        let (step_sender, step_mission) = mpsc::channel(64);
+        let (controller, handle) = init_vehicle_control(TestPilot { step_mission }, send);
 
         tokio::spawn(controller.run());
 
-        (rec, handle, step_sender, send_prg)
+        (rec, handle, step_sender)
     }
 
     fn mission() -> Vec<MissionItem> {
@@ -320,9 +344,10 @@ mod tests {
             .expect("rec error");
         assert_eq!(*status, expected);
     }
+
     #[tokio::test]
     async fn transition_through_mission() {
-        let (mut rec, handle, step_sender, _) = test_setup();
+        let (mut rec, handle, step_sender) = test_setup();
         assert_status(&mut rec, VehicleStatus::Idle).await;
 
         handle.submit_mission(mission()).await.expect("runs fine");
@@ -330,7 +355,7 @@ mod tests {
         assert_status(&mut rec, VehicleStatus::MissionRunning(None)).await;
 
         // finish mission
-        let _ = step_sender.send(()).await;
+        let _ = step_sender.send(TestStep::Success).await;
 
         assert_status(&mut rec, VehicleStatus::Idle).await;
 
@@ -340,14 +365,14 @@ mod tests {
         assert_status(&mut rec, VehicleStatus::MissionRunning(None)).await;
 
         // finish mission
-        let _ = step_sender.send(()).await;
+        let _ = step_sender.send(TestStep::Success).await;
 
         assert_status(&mut rec, VehicleStatus::Idle).await;
     }
 
     #[tokio::test]
     async fn cant_start_mission_after_abort() {
-        let (mut rec, handle, _step_sender, _) = test_setup();
+        let (mut rec, handle, _step_sender) = test_setup();
         assert_status(&mut rec, VehicleStatus::Idle).await;
 
         handle.submit_mission(mission()).await.expect("runs fine");
@@ -367,22 +392,19 @@ mod tests {
 
     #[tokio::test]
     async fn cant_start_mission_after_low_bat_landing() {
-        let (mut rec, handle, step_sender, prg_sender) = test_setup();
+        let (mut rec, handle, step_sender) = test_setup();
         assert_status(&mut rec, VehicleStatus::Idle).await;
 
         handle.submit_mission(mission()).await.expect("runs fine");
 
         assert_status(&mut rec, VehicleStatus::MissionRunning(None)).await;
 
-        prg_sender
-            .send(ProgressEvent::LowBatLanding)
-            .await
-            .expect("sending");
+        step_sender.send(TestStep::LowBat).await.expect("sending");
 
         assert_status(&mut rec, VehicleStatus::Landing).await;
 
         // finish landing
-        let _ = step_sender.send(()).await;
+        let _ = step_sender.send(TestStep::Success).await;
 
         assert_status(&mut rec, VehicleStatus::Aborted(Reason::LowBattery)).await;
 
@@ -392,7 +414,7 @@ mod tests {
 
     #[tokio::test]
     async fn can_start_mission_after_manual_landing() {
-        let (mut rec, handle, step_sender, _) = test_setup();
+        let (mut rec, handle, step_sender) = test_setup();
         assert_status(&mut rec, VehicleStatus::Idle).await;
 
         handle.submit_mission(mission()).await.expect("runs fine");
@@ -404,14 +426,15 @@ mod tests {
         assert_status(&mut rec, VehicleStatus::Landing).await;
 
         // finish landing
-        let _ = step_sender.send(()).await;
+        step_sender.send(TestStep::Success).await.expect("works");
 
+        println!("here");
         assert_status(&mut rec, VehicleStatus::Idle).await;
     }
 
     #[tokio::test]
     async fn only_upload_mission_when_idle() {
-        let (mut rec, handle, step_sender, _) = test_setup();
+        let (mut rec, handle, step_sender) = test_setup();
         assert_status(&mut rec, VehicleStatus::Idle).await;
         handle
             .upload_mission_item(mission()[0].clone())
@@ -433,7 +456,7 @@ mod tests {
         assert_matches!(upload_failed, Err(_));
 
         // finish landing
-        let _ = step_sender.send(()).await;
+        let _ = step_sender.send(TestStep::Success).await;
         assert_status(&mut rec, VehicleStatus::Idle).await;
 
         handle

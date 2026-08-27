@@ -1,3 +1,4 @@
+use crate::control::autopilot::ProgressEvent;
 use crate::control::autopilot::{
     Autopilot, ManualControl, SetpointHover, VehicleDownlink, health_from_log, telemetry_from_log,
 };
@@ -8,7 +9,6 @@ use crate::control::patterns::smooth_path::run_smooth_path;
 use crate::control::trajectory::orbit_trajectory::orbit_to_trajectory;
 use crate::control::trajectory::setpoint_trajectory::waypoints_to_trajectory;
 use crate::control::vehicle::Vehicle;
-use crate::control::vehicle_control::ProgressEvent;
 use crate::occupancy::grid::{OccupancyGrid, update_grid};
 use crate::utils::errors::MissionError::FailedToConnect;
 use crate::utils::errors::Res;
@@ -18,11 +18,13 @@ use datalink::domain_types::{
     Abort, FlightMode, Meters, MetersPerSecond, MissionItem, Progress, Telemetry, TrajectoryId,
     VehicleHealth, VehicleStatus, Waypoint,
 };
-use futures::{Stream, StreamExt, TryFutureExt};
+use futures::{Stream, TryFutureExt};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::time::{MissedTickBehavior, sleep};
 use tokio::{select, time};
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 
 pub const RANGE_FRONT: &str = "range.front";
@@ -44,9 +46,7 @@ pub const STATE_ESTIMATE_YAW: &str = "stateEstimate.yaw";
 ///
 /// # Errors
 /// Fails if no drone is found or the connection or logging setup fails.
-pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot, mpsc::Receiver<ProgressEvent>)> {
-    // todo improve channel logic dependencies between things (maybe `runMission` can expose prgress report?
-    // run mission just exposes stream of ProgressEvent with mission complete at the end... easier
+pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot)> {
     let link_context = crazyflie_link::LinkContext::new();
     let found = link_context.scan([0xE7; 5]).await?;
 
@@ -141,15 +141,12 @@ pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot, mpsc::Receiver<Pr
         }
     });
     let (status_sender, _) = watch::channel(VehicleStatus::Idle);
-    let (progress_sender, progress_receiver) = mpsc::channel(64);
 
     Ok((
         VehicleDownlink::new(tx.clone(), health_sender, status_sender, grid_sender),
         CrazyPilot {
             vehicle: Vehicle::new(cf, sender_tx.subscribe(), health_watch.subscribe()),
-            mission_status: progress_sender,
         },
-        progress_receiver,
     ))
 }
 
@@ -159,18 +156,20 @@ pub async fn setup_link() -> Res<(VehicleDownlink, CrazyPilot, mpsc::Receiver<Pr
 #[derive(Debug)]
 pub struct CrazyPilot {
     vehicle: Vehicle,
-    pub mission_status: mpsc::Sender<ProgressEvent>,
 }
 
 impl CrazyPilot {
-    async fn start_mission(&self, mission: Vec<MissionItem>) -> Res<()> {
+    async fn start_mission(
+        &self,
+        mission: Vec<MissionItem>,
+        mission_status: mpsc::Sender<ProgressEvent>,
+    ) -> Res<()> {
         let vehicle = &self.vehicle;
 
         let total_commands = mission.len();
 
         for (i, command) in mission.into_iter().enumerate() {
-            let _ = self
-                .mission_status
+            let _ = mission_status
                 .send(ProgressEvent::Progress(Progress {
                     current_command: format!("{:?}", command),
                     command_num: i,
@@ -234,31 +233,52 @@ impl CrazyPilot {
 }
 
 impl Autopilot for CrazyPilot {
-    async fn run_mission(
+    fn run_mission(
         &mut self,
         mission: Vec<MissionItem>,
-        abort_signal: impl Future<Output = Option<Abort>>,
-    ) -> Res<()> {
+        abort_signal: impl Future<Output = Option<Abort>> + Send,
+    ) -> impl Stream<Item = ProgressEvent> + Send {
+        let (progress_sender, progress_receiver) = mpsc::channel(64);
         let mut health_rx = self.vehicle.health.clone();
-        let is_low_bat = health_rx.wait_for(VehicleHealth::is_low_bat).map_ok(|_| ());
 
         // runs mission or aborts on keypress or on low battery
-        select! {
-            mission = self.start_mission(mission) => {
-                info!("Mission complete");
-                mission?
+        let mission_fut = async move {
+            let is_low_bat = health_rx.wait_for(VehicleHealth::is_low_bat).map_ok(|_| ());
+            let mission_res = select! {
+                mission = self.start_mission(mission, progress_sender.clone()) => {
+                    info!("Mission complete");
+                    mission
+                }
+                Some(abort) = abort_signal => {
+                    self.abort_mission(abort).await
+                }
+                _ = is_low_bat=> {
+                    info!("Low battery - returning home");
+                    let _ = progress_sender
+                        .send(ProgressEvent::LowBatLanding).await;
+                    self.vehicle.return_home().await
+                }
+            };
+
+            match mission_res {
+                Ok(_) => {
+                    let _ = progress_sender.send(ProgressEvent::MissionComplete).await;
+                    ()
+                }
+                Err(err) => {
+                    let _ = progress_sender
+                        .send(ProgressEvent::FailedMission(err))
+                        .await;
+                    ()
+                }
             }
-            Some(abort) = abort_signal => {
-                self.abort_mission(abort).await?
-            }
-            _ = is_low_bat=> {
-                info!("Low battery - returning home");
-                let _ = self.mission_status
-                    .send(ProgressEvent::LowBatLanding).await;
-                self.vehicle.return_home().await?;
-            }
-        }
-        Ok(())
+        };
+
+        // this is just polled below, but emits nothing - mission completion is sent above already
+        let mission_done_stream =
+            futures::stream::once(mission_fut).filter_map(|_| None::<ProgressEvent>);
+
+        ReceiverStream::new(progress_receiver).merge(mission_done_stream)
     }
 
     async fn upload_orbit(

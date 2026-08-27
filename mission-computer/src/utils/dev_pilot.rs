@@ -1,3 +1,4 @@
+use crate::control::autopilot::ProgressEvent;
 use crate::control::autopilot::VehicleDownlink;
 use crate::errors::Res;
 use crate::{Autopilot, ManualControl, OccupancyGrid};
@@ -9,20 +10,16 @@ use futures::Stream;
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
 use tokio::time::sleep;
-use tokio::{select, spawn, time};
+use tokio::{spawn, time};
 
 pub struct DevPilot;
 impl Autopilot for DevPilot {
-    async fn run_mission(
+    fn run_mission(
         &mut self,
         _mission: Vec<MissionItem>,
-        abort_signal: impl Future<Output = Option<Abort>>,
-    ) -> Res<()> {
-        select! {
-            _ = sleep(Duration::from_secs(5))=> {},
-            Some(_) = abort_signal=> {},
-        };
-        Ok(())
+        _abort_signal: impl Future<Output = Option<Abort>> + Send,
+    ) -> impl Stream<Item = ProgressEvent> {
+        tokio_stream::once(ProgressEvent::LowBatLanding)
     }
 
     async fn upload_orbit(

@@ -8,10 +8,15 @@
 //! # Examples
 //! ```no_run
 //! use mission_computer::{setup_link, Autopilot, flight_paths::orbit};
+//! use futures::StreamExt;
 //!
 //! # async fn run() -> mission_computer::errors::Res<()> {
-//! let (_, mut drone, _) = setup_link().await?;
-//! drone.run_mission(orbit(), async { None }).await
+//!   let (_, mut command_unit) = setup_link().await?;
+//!   let _: Vec<_> = command_unit
+//!   .run_mission(orbit(), async { None })
+//!   .collect()
+//!   .await;
+//!   Ok(())
 //! # }
 //! ```
 mod air_data_link;

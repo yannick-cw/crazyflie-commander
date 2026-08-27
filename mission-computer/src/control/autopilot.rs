@@ -2,13 +2,14 @@ use crate::control::crazyflie::{
     PM_STATE, RANGE_BACK, RANGE_FRONT, RANGE_LEFT, RANGE_RIGHT, RANGE_UP, STATE_ESTIMATE_VX,
     STATE_ESTIMATE_VY, STATE_ESTIMATE_X, STATE_ESTIMATE_Y, STATE_ESTIMATE_YAW, STATE_ESTIMATE_Z,
 };
+use crate::errors::MissionError;
 use crate::occupancy::grid::OccupancyGrid;
 use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
 use datalink::domain_types::{
-    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, Telemetry, TrajectoryId,
-    VehicleHealth, VehicleStatus, Waypoint,
+    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, Progress, Telemetry,
+    TrajectoryId, VehicleHealth, VehicleStatus, Waypoint,
 };
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -86,7 +87,7 @@ pub trait Autopilot {
         &mut self,
         mission: Vec<MissionItem>,
         abort_signal: impl Future<Output = Option<Abort>> + Send,
-    ) -> impl Future<Output = Res<()>> + Send;
+    ) -> impl Stream<Item = ProgressEvent> + Send;
 
     async fn upload_command(
         &mut self,
@@ -172,4 +173,12 @@ impl VehicleDownlink {
     pub fn subscribe_grid(&self) -> broadcast::Receiver<OccupancyGrid> {
         self.grid.subscribe()
     }
+}
+
+#[derive(Debug)]
+pub enum ProgressEvent {
+    Progress(Progress),
+    FailedMission(MissionError),
+    MissionComplete,
+    LowBatLanding,
 }
