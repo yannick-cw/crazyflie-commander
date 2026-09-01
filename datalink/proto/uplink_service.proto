@@ -1,6 +1,7 @@
 syntax = "proto3";
 import "mission_item.proto";
 import "abort.proto";
+import "manual_control.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/duration.proto";
 
@@ -13,6 +14,8 @@ service UplinkService {
   rpc AbortMission (AbortMission) returns (google.protobuf.Empty) {}
   // upload a trajectory
   rpc UploadTrajectory (MissionItem) returns (Response) {}
+  // stream manual flight control
+  rpc ManualControl (stream ManualControl) returns (google.protobuf.Empty) {}
 }
 
 message Response {

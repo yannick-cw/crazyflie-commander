@@ -1,6 +1,7 @@
 use crate::external::mission_service::MissionService;
 use crate::ground_data_link::vehicle_link::VehicleLink;
 use crate::pages::home::ModeSelection;
+use crate::pages::manual_control::Msg::CommandSet;
 use crate::pages::manual_control::SetpointRecording;
 use crate::pages::mission_monitor::Msg::MissionUpdate;
 use crate::pages::{home, manual_control, mission_monitor, mission_select};
@@ -12,7 +13,8 @@ use futures::StreamExt;
 use ratatea::{Cmd, Ratatea, Sub};
 use ratatui::Frame;
 use std::rc::Rc;
-use tokio_stream::wrappers::WatchStream;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::{UnboundedReceiverStream, WatchStream};
 
 // model ------------------------------------------------
 #[derive(Debug)]
@@ -151,15 +153,18 @@ impl Ratatea for Program {
                         Cmd::pure(Msg::MissionSelect(mission_select::Msg::LoadMissions)),
                     ),
                     ModeSelection::MissionPlan => (model.state, Cmd::none()),
-                    // ModeSelection::ManualControl if model.terminal_supports_enhancements => {
-                    //      let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
-                    //      let commands = UnboundedReceiverStream::new(motion_receiver);
-                    //      let h = tokio::spawn(command_unit.fly(commands));
-                    //      (
-                    //          State::ManualControl(manual_control::Model::new(motion_sender)),
-                    //          Cmd::new(h, |_| Msg::ManualControl(CommandSet)),
-                    //      )
-                    // }
+                    ModeSelection::ManualControl if model.terminal_supports_enhancements => {
+                        let (motion_sender, motion_receiver) = mpsc::unbounded_channel();
+                        let commands = UnboundedReceiverStream::new(motion_receiver);
+                        let vehicle_link = self.vehicle_link.clone();
+                        (
+                            State::ManualControl(manual_control::Model::new(motion_sender)),
+                            Cmd::new(
+                                async move { vehicle_link.stream_manual_flight(commands).await },
+                                |_| Msg::ManualControl(CommandSet),
+                            ),
+                        )
+                    }
                     ModeSelection::ManualControl => (model.state, Cmd::none()),
                 };
                 model.state = new_state;

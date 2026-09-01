@@ -6,12 +6,12 @@ use datalink::downlink::message::Msg;
 use datalink::downlink::stream_telemetry_server::StreamTelemetry;
 use datalink::downlink::{Message, MissionStatus, OccupancyGrid, VehicleHealth, VehicleState};
 use datalink::uplink::uplink_service_server::UplinkService;
-use datalink::uplink::{AbortMission, Mission, MissionItem};
+use datalink::uplink::{AbortMission, ManualControl, Mission, MissionItem};
 use datalink::{domain_types, uplink};
 use std::pin::Pin;
 use tokio_stream::wrappers::{BroadcastStream, WatchStream};
 use tokio_stream::{Stream, StreamExt};
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status, Streaming};
 use tracing::error;
 
 pub struct MissionServer {
@@ -128,5 +128,24 @@ impl UplinkService for UplinkServer {
                     }),
                 })
             })
+    }
+
+    async fn manual_control(
+        &self,
+        request: Request<Streaming<ManualControl>>,
+    ) -> Result<Response<()>, Status> {
+        let vehicle_handle = self.vehicle_handle.clone();
+
+        vehicle_handle
+            .manual_mission(
+                request
+                    .into_inner()
+                    .filter_map(|res| res.ok())
+                    .map(|m| m.into()),
+            )
+            .await
+            .inspect_err(|err| error!("Failed manual control {:?}", err))
+            .map_err(|err| Status::failed_precondition(format!("{:?}", err)))
+            .map(|_| Response::new(()))
     }
 }

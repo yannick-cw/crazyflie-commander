@@ -8,6 +8,7 @@ use crate::downlink::mission_status::running::Progress as RawProgress;
 use crate::downlink::{VehicleHealth as RawHealth, vehicle_health};
 use crate::downlink::{VehicleState, mission_status};
 use crate::uplink;
+use crate::uplink::manual_control;
 use derive_more::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -189,20 +190,16 @@ impl From<VehicleStatus> for RawStatus {
     fn from(value: VehicleStatus) -> Self {
         Self {
             status: Some(match value {
-                VehicleStatus::Idle => mission_status::Status::Idle(mission_status::Idle {}),
+                VehicleStatus::Idle => Status::Idle(mission_status::Idle {}),
                 VehicleStatus::MissionRunning(progress) => {
-                    mission_status::Status::Running(mission_status::Running {
+                    Status::Running(mission_status::Running {
                         p: progress.map(|p| p.into()),
                     })
                 }
-                VehicleStatus::Aborted(reason) => {
-                    mission_status::Status::Aborted(mission_status::Aborted {
-                        reason: mission_status::aborted::Reason::from(reason).into(),
-                    })
-                }
-                VehicleStatus::Landing => {
-                    mission_status::Status::Landing(mission_status::Landing {})
-                }
+                VehicleStatus::Aborted(reason) => Status::Aborted(mission_status::Aborted {
+                    reason: mission_status::aborted::Reason::from(reason).into(),
+                }),
+                VehicleStatus::Landing => Status::Landing(mission_status::Landing {}),
             }),
         }
     }
@@ -212,13 +209,11 @@ impl From<RawStatus> for VehicleStatus {
     fn from(value: RawStatus) -> Self {
         match value.status {
             None => VehicleStatus::Idle,
-            Some(mission_status::Status::Idle(_)) => VehicleStatus::Idle,
-            Some(mission_status::Status::Running(running)) => {
+            Some(Status::Idle(_)) => VehicleStatus::Idle,
+            Some(Status::Running(running)) => {
                 VehicleStatus::MissionRunning(running.p.map(|p| p.into()))
             }
-            Some(mission_status::Status::Aborted(aborted)) => {
-                VehicleStatus::Aborted(aborted.reason().into())
-            }
+            Some(Status::Aborted(aborted)) => VehicleStatus::Aborted(aborted.reason().into()),
             Some(Status::Landing(_)) => VehicleStatus::Landing,
         }
     }
@@ -695,6 +690,88 @@ impl From<uplink::AbortMission> for Abort {
         match value.abort() {
             uplink::abort_mission::Abort::Land => Abort::Land,
             uplink::abort_mission::Abort::HardStop => Abort::FlightTermination,
+        }
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct SetpointHover {
+    pub vx: MetersPerSecond,
+    pub vy: MetersPerSecond,
+    pub z: Meters,
+    pub yaw_rate: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub enum ManualControl {
+    TakeOff(Meters),
+    Move(SetpointHover),
+    Land,
+    GoHome,
+    Stop,
+}
+
+impl From<ManualControl> for uplink::ManualControl {
+    fn from(value: ManualControl) -> Self {
+        match value {
+            ManualControl::TakeOff(meters) => uplink::ManualControl {
+                control: Some(uplink::manual_control::Control::Takeoff(uplink::Start {
+                    height: meters.0,
+                })),
+            },
+            ManualControl::Move(SetpointHover {
+                vx,
+                vy,
+                z,
+                yaw_rate,
+            }) => uplink::ManualControl {
+                control: Some(uplink::manual_control::Control::Setpoint(
+                    uplink::SetpointHover {
+                        vx: vx.0,
+                        vy: vy.0,
+                        z: z.0,
+                        yaw_rate,
+                    },
+                )),
+            },
+            ManualControl::Land => uplink::ManualControl {
+                control: Some(manual_control::Control::Land(uplink::Landing {})),
+            },
+            ManualControl::GoHome => uplink::ManualControl {
+                control: Some(manual_control::Control::GoHome(uplink::GoHome {})),
+            },
+            ManualControl::Stop => uplink::ManualControl {
+                control: Some(manual_control::Control::Stop(uplink::Stop {})),
+            },
+        }
+    }
+}
+
+impl From<uplink::ManualControl> for ManualControl {
+    fn from(value: uplink::ManualControl) -> Self {
+        match value {
+            uplink::ManualControl {
+                control: Some(manual_control::Control::Stop(_)),
+            } => ManualControl::Stop,
+            uplink::ManualControl {
+                control: Some(manual_control::Control::Land(_)),
+            } => ManualControl::Land,
+            uplink::ManualControl {
+                control: Some(manual_control::Control::GoHome(_)),
+            } => ManualControl::GoHome,
+            uplink::ManualControl {
+                control: Some(manual_control::Control::Takeoff(start)),
+            } => ManualControl::TakeOff(Meters(start.height)),
+            uplink::ManualControl {
+                control: Some(manual_control::Control::Setpoint(setpoint)),
+            } => ManualControl::Move(SetpointHover {
+                vx: MetersPerSecond(setpoint.vx),
+                vy: MetersPerSecond(setpoint.vy),
+                z: Meters(setpoint.z),
+                yaw_rate: setpoint.yaw_rate,
+            }),
+            // can not happen - just go home
+            uplink::ManualControl { control: None } => ManualControl::GoHome,
         }
     }
 }

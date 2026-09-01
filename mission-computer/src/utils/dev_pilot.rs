@@ -1,10 +1,10 @@
 use crate::control::autopilot::ProgressEvent;
 use crate::control::autopilot::VehicleDownlink;
 use crate::errors::Res;
-use crate::{Autopilot, ManualControl, OccupancyGrid};
+use crate::{Autopilot, OccupancyGrid};
 use datalink::domain_types::{
-    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, Progress, Telemetry,
-    TrajectoryId, VehicleHealth, VehicleStatus, Waypoint,
+    Abort, BatteryLevel, FlightMode, ManualControl, Meters, MetersPerSecond, MissionItem, Progress,
+    Telemetry, TrajectoryId, VehicleHealth, VehicleStatus, Waypoint,
 };
 use futures::Stream;
 use std::time::Duration;

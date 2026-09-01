@@ -8,11 +8,10 @@ use crate::utils::errors::Res;
 use crazyflie_lib::Value;
 use crazyflie_lib::subsystems::log::LogData;
 use datalink::domain_types::{
-    Abort, BatteryLevel, FlightMode, Meters, MetersPerSecond, MissionItem, Progress, Telemetry,
-    TrajectoryId, VehicleHealth, VehicleStatus, Waypoint,
+    Abort, BatteryLevel, FlightMode, ManualControl, Meters, MetersPerSecond, MissionItem, Progress,
+    Telemetry, TrajectoryId, VehicleHealth, VehicleStatus, Waypoint,
 };
 use futures::Stream;
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::{broadcast, watch};
 use tracing::warn;
@@ -58,23 +57,6 @@ pub fn health_from_log(health_log: &LogData) -> VehicleHealth {
             BatteryLevel::High
         },
     }
-}
-
-#[derive(Debug, Default, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct SetpointHover {
-    pub vx: MetersPerSecond,
-    pub vy: MetersPerSecond,
-    pub z: Meters,
-    pub yaw_rate: f32,
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub enum ManualControl {
-    TakeOff(Meters),
-    Move(SetpointHover),
-    Land,
-    GoHome,
-    Stop,
 }
 
 /// Control interface for one crazyflie: run missions, fly manually and observe live state.
@@ -129,6 +111,7 @@ pub trait Autopilot {
         flight_mode: FlightMode,
     ) -> Res<(TrajectoryId, Duration)>;
 
+    // todo return more appropriate responses based on HOW it finished
     fn fly(
         &mut self,
         commands: impl Stream<Item = ManualControl> + Send,

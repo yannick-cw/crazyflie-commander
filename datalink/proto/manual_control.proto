@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package uplink;
+
+message ManualControl {
+  oneof control {
+    Start takeoff = 1;
+    SetpointHover setpoint = 2;
+    Landing land = 3;
+    GoHome goHome = 4;
+    Stop stop = 5;
+  }
+}
+
+message Start {
+  float height = 1;
+}
+message Landing {}
+
+message GoHome {}
+
+message Stop {}
+
+message SetpointHover {
+  float vx = 1;
+  float vy = 2;
+  float z = 3;
+  float yaw_rate = 4;
+}

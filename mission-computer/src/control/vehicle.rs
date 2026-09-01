@@ -1,4 +1,3 @@
-use crate::control::autopilot::SetpointHover;
 use crate::control::low_level_engine::{Step, StepState};
 use crate::control::trajectory::orbit_trajectory::CompressedTrajectory;
 use crate::control::trajectory::setpoint_trajectory::Trajectory;
@@ -10,7 +9,7 @@ use crazyflie_lib::subsystems::high_level_commander::{
 };
 use crazyflie_lib::subsystems::memory::{MemoryType, TrajectoryMemory};
 use datalink::domain_types::{
-    Meters, MetersPerSecond, Setpoint, Telemetry, TrajectoryId, VehicleHealth,
+    Meters, MetersPerSecond, Setpoint, SetpointHover, Telemetry, TrajectoryId, VehicleHealth,
 };
 use std::fmt::{Debug, Formatter};
 use std::ops::Add;

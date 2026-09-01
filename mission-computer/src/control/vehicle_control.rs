@@ -1,20 +1,22 @@
 use crate::Autopilot;
 use crate::control::autopilot::ProgressEvent;
 use crate::control::vehicle_control::VehicleState::{
-    ExecutingMission, HardStopped, Idle, Landing, LowBatteryStopped,
+    ExecutingMission, HardStopped, Idle, Landing, LowBatteryStopped, StreamingManualControl,
 };
 use crate::errors::MissionError::StateError;
 use crate::errors::Res;
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use datalink::domain_types;
-use datalink::domain_types::{Abort, Progress, Reason, TrajectoryId, VehicleStatus};
+use datalink::domain_types::{Abort, ManualControl, Progress, Reason, TrajectoryId, VehicleStatus};
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 use tokio::select;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
+use tokio_stream::Stream;
 use tracing::error;
 
 enum LandingTrigger {
@@ -25,6 +27,7 @@ enum VehicleState<A: Autopilot> {
     Idle(A),
     Landing(JoinHandle<A>, LandingTrigger),
     ExecutingMission(oneshot::Sender<Abort>, JoinHandle<A>, Option<Progress>),
+    StreamingManualControl(JoinHandle<A>),
     HardStopped,
     LowBatteryStopped,
 }
@@ -36,6 +39,7 @@ impl<A: Autopilot> Debug for VehicleState<A> {
             ExecutingMission(_, _, _) => write!(f, "ExecutingMissions"),
             HardStopped => write!(f, "HardStopped"),
             LowBatteryStopped => write!(f, "LowBatteryStopped"),
+            StreamingManualControl(_) => write!(f, "StreamingManualControl"),
         }
     }
 }
@@ -47,18 +51,29 @@ impl<A: Autopilot> VehicleState<A> {
             ExecutingMission(_, _, p) => VehicleStatus::MissionRunning(p.clone()),
             HardStopped => VehicleStatus::Aborted(Reason::HardStop),
             LowBatteryStopped => VehicleStatus::Aborted(Reason::LowBattery),
+            StreamingManualControl(_) => VehicleStatus::MissionRunning(None),
         }
     }
 }
 
-#[derive(Debug)]
 enum Message {
     RunMission(Vec<domain_types::MissionItem>, oneshot::Sender<Res<()>>),
     AbortCommand(Abort, oneshot::Sender<Res<()>>),
+    ManualControl(BoxStream<'static, ManualControl>, oneshot::Sender<Res<()>>),
     UploadMissionItem(
         domain_types::MissionItem,
         oneshot::Sender<Res<Option<(TrajectoryId, Duration)>>>,
     ),
+}
+impl Debug for Message {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Message::RunMission(_, _) => f.write_str("RunMission"),
+            Message::AbortCommand(_, _) => f.write_str("AbortCommand"),
+            Message::ManualControl(_, _) => f.write_str("ManualControl"),
+            Message::UploadMissionItem(_, _) => f.write_str("UploadMissionItem"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -72,7 +87,7 @@ impl VehicleHandle {
         self.command_sender
             .send(Message::RunMission(m, reply))
             .await
-            .context("could not send!")?;
+            .map_err(|err| anyhow!("{:?}", err))?;
 
         rx.await.context("could not receive")?
     }
@@ -84,7 +99,7 @@ impl VehicleHandle {
         self.command_sender
             .send(Message::UploadMissionItem(m, reply))
             .await
-            .context("could not send!")?;
+            .map_err(|err| anyhow!("{:?}", err))?;
 
         rx.await.context("could not receive")?
     }
@@ -93,7 +108,19 @@ impl VehicleHandle {
         self.command_sender
             .send(Message::AbortCommand(abort_signal, reply))
             .await
-            .context("could not send!")?;
+            .map_err(|err| anyhow!("{:?}", err))?;
+
+        rx.await.context("could not receive")?
+    }
+    pub async fn manual_mission(
+        &self,
+        control_stream: impl Stream<Item = ManualControl> + Send + 'static,
+    ) -> Res<()> {
+        let (reply, rx) = oneshot::channel();
+        self.command_sender
+            .send(Message::ManualControl(control_stream.boxed(), reply))
+            .await
+            .map_err(|err| anyhow!("{:?}", err))?;
 
         rx.await.context("could not receive")?
     }
@@ -141,9 +168,28 @@ impl<A: Autopilot + Send + 'static> VehicleController<A> {
                 let _ = reply.send(res);
                 Idle(autopilot)
             }
+            (Message::ManualControl(stream, reply), Idle(mut autopilot)) => {
+                let handle = tokio::spawn(async move {
+                    match autopilot.fly(stream).await {
+                        Ok(()) => {}
+                        Err(err) => error!("Failed manual control with: {:?}", err),
+                    }
+                    let _ = progress_sender.send(ProgressEvent::MissionComplete).await;
+                    let _ = reply.send(Ok(()));
+                    autopilot
+                });
+                StreamingManualControl(handle)
+            }
             (Message::RunMission(_, reply), state) => {
                 let _ = reply.send(Err(StateError(format!(
                     "Can't start mission when in {:?} state",
+                    state
+                ))));
+                state
+            }
+            (Message::ManualControl(_, reply), state) => {
+                let _ = reply.send(Err(StateError(format!(
+                    "Can't control flight when in {:?} state",
                     state
                 ))));
                 state
@@ -195,7 +241,9 @@ impl<A: Autopilot + Send + 'static> VehicleController<A> {
             }
             (
                 ProgressEvent::MissionComplete,
-                ExecutingMission(_, h, _) | Landing(h, LandingTrigger::ManualLanding),
+                ExecutingMission(_, h, _)
+                | Landing(h, LandingTrigger::ManualLanding)
+                | StreamingManualControl(h),
             ) => Idle(h.await.expect("")),
             (ProgressEvent::MissionComplete, Landing(_, LandingTrigger::LowBatLanding)) => {
                 LowBatteryStopped
@@ -248,11 +296,15 @@ pub fn init_vehicle_control<A: Autopilot>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Autopilot, ManualControl};
-    use datalink::domain_types::{FlightMode, Meters, MetersPerSecond, MissionItem, Waypoint};
+    use crate::Autopilot;
+    use datalink::domain_types::{
+        FlightMode, ManualControl, Meters, MetersPerSecond, MissionItem, Waypoint,
+    };
     use futures::Stream;
     use std::assert_matches;
     use tokio::time::timeout;
+    use tokio_stream::StreamExt;
+    use tokio_stream::wrappers::ReceiverStream;
 
     #[derive(Debug, Clone)]
     enum TestStep {
@@ -310,9 +362,15 @@ mod tests {
         }
         fn fly(
             &mut self,
-            _commands: impl Stream<Item = ManualControl> + Send,
+            commands: impl Stream<Item = ManualControl> + Send,
         ) -> impl Future<Output = Res<()>> + Send {
-            async { Ok(()) }
+            async {
+                tokio::pin!(commands);
+                while let Some(next) = commands.next().await {
+                    println!("Working on {:?}", next);
+                }
+                Ok(())
+            }
         }
     }
 
@@ -463,5 +521,42 @@ mod tests {
             .upload_mission_item(mission()[0].clone())
             .await
             .expect("upload works");
+    }
+
+    #[tokio::test]
+    async fn run_manual_control_from_idle() {
+        let (mut rec, handle, _) = test_setup();
+        assert_status(&mut rec, VehicleStatus::Idle).await;
+
+        let (manual_in, manual_out) = mpsc::channel(22);
+
+        let control_stream = ReceiverStream::new(manual_out);
+
+        let h = handle.clone();
+        let flight = tokio::spawn(async move {
+            h.manual_mission(control_stream)
+                .await
+                .expect("started flying works")
+        });
+
+        let _ = manual_in.send(ManualControl::TakeOff(Meters(2.0))).await;
+
+        assert_status(&mut rec, VehicleStatus::MissionRunning(None)).await;
+
+        // can not submit mission during manual flight
+        let mission_failed = handle.submit_mission(mission()).await;
+        assert_matches!(mission_failed, Err(_));
+
+        let upload_failed = handle.upload_mission_item(mission()[0].clone()).await;
+        assert_matches!(upload_failed, Err(_));
+
+        let cant_abort = handle.abort_mission(Abort::Land).await;
+        assert_matches!(cant_abort, Err(_));
+
+        // finish manual flight
+        drop(manual_in);
+
+        flight.await.expect("finish flight");
+        assert_status(&mut rec, VehicleStatus::Idle).await;
     }
 }

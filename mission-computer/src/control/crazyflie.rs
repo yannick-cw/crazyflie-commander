@@ -1,7 +1,5 @@
 use crate::control::autopilot::ProgressEvent;
-use crate::control::autopilot::{
-    Autopilot, ManualControl, SetpointHover, VehicleDownlink, health_from_log, telemetry_from_log,
-};
+use crate::control::autopilot::{Autopilot, VehicleDownlink, health_from_log, telemetry_from_log};
 use crate::control::patterns::billiard_box::run_billiard_loop;
 use crate::control::patterns::orbit::run_orbit;
 use crate::control::patterns::setpoints::run_setpoints;
@@ -15,8 +13,8 @@ use crate::utils::errors::Res;
 use crazyflie_lib::Crazyflie;
 use crazyflie_lib::subsystems::log::LogPeriod;
 use datalink::domain_types::{
-    Abort, FlightMode, Meters, MetersPerSecond, MissionItem, Progress, Telemetry, TrajectoryId,
-    VehicleHealth, VehicleStatus, Waypoint,
+    Abort, FlightMode, ManualControl, Meters, MetersPerSecond, MissionItem, Progress,
+    SetpointHover, Telemetry, TrajectoryId, VehicleHealth, VehicleStatus, Waypoint,
 };
 use futures::{Stream, TryFutureExt};
 use std::time::Duration;

@@ -1,6 +1,6 @@
 use datalink::compression_adapter::decompressed_grid_stream;
 use datalink::domain_types::{
-    Abort, MissionItem, Telemetry, TrajectoryId, VehicleHealth, VehicleStatus,
+    Abort, ManualControl, MissionItem, Telemetry, TrajectoryId, VehicleHealth, VehicleStatus,
 };
 use datalink::downlink::stream_telemetry_client::StreamTelemetryClient;
 use datalink::uplink::uplink_service_client::UplinkServiceClient;
@@ -10,7 +10,7 @@ use mission_computer::errors::MissionError::UploadError;
 use mission_computer::errors::Res;
 use std::time::Duration;
 use tokio::sync::watch;
-use tokio_stream::StreamExt;
+use tokio_stream::{Stream, StreamExt};
 use tonic::transport::{Channel, Uri};
 use tracing::error;
 
@@ -138,5 +138,19 @@ impl VehicleLink {
                 )
             })
         }))
+    }
+
+    pub async fn stream_manual_flight(
+        &self,
+        controls: impl Stream<Item = ManualControl> + Send + 'static,
+    ) -> Res<()> {
+        let mut client = self.uplink_client.clone();
+        let uplink_controls = controls.map(|m| m.into());
+
+        client
+            .manual_control(uplink_controls)
+            .await
+            .map_err(|err| UploadError(format!("Could not stream manual flight {:?}", err)))?;
+        Ok(())
     }
 }
