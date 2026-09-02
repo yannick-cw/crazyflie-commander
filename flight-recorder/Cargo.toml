@@ -1,0 +1,21 @@
+[package]
+name = "flight-recorder"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arrow = { version = "59.3.0", features = ["ipc"] }
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-stream = { version = "0.1.18" }
+futures = "0.3.32"
+parquet = { version = "59.3.0", features = ["arrow"] }
+datalink = { path = "../datalink" }
+anyhow = "1.0.104"
+
+[dev-dependencies]
+proptest = { version = "1.11.0" }
+test-strategy = "0.4.5"
+tempfile = "3.27.0"

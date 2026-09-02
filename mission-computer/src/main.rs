@@ -2,7 +2,7 @@ use datalink::domain_types::VehicleStatus;
 use datalink::downlink::stream_telemetry_server::StreamTelemetryServer;
 use datalink::uplink::uplink_service_server::UplinkServiceServer;
 use mission_computer::dev_pilot::{DevPilot, dev_downlink};
-use mission_computer::server::{MissionServer, UplinkServer};
+use mission_computer::server::{DownlinkServer, UplinkServer};
 use mission_computer::{init_vehicle_control, setup_link};
 use std::net::SocketAddr;
 use tokio::sync::watch;
@@ -20,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let (control, vehicle_handle) = init_vehicle_control(real_unit, status_publish);
             (
                 Server::builder()
-                    .add_service(StreamTelemetryServer::new(MissionServer {
+                    .add_service(StreamTelemetryServer::new(DownlinkServer {
                         vehicle_downlink,
                     }))
                     .add_service(UplinkServiceServer::new(UplinkServer { vehicle_handle })),
@@ -33,7 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let (control, vehicle_handle) = init_vehicle_control(DevPilot, dummy_sender);
             (
                 Server::builder()
-                    .add_service(StreamTelemetryServer::new(MissionServer {
+                    .add_service(StreamTelemetryServer::new(DownlinkServer {
                         vehicle_downlink: dev_downlink(),
                     }))
                     .add_service(UplinkServiceServer::new(UplinkServer { vehicle_handle })),

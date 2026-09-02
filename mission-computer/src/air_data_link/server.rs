@@ -14,7 +14,7 @@ use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 use tracing::error;
 
-pub struct MissionServer {
+pub struct DownlinkServer {
     pub vehicle_downlink: VehicleDownlink,
 }
 
@@ -23,7 +23,7 @@ pub struct UplinkServer {
 }
 
 #[tonic::async_trait]
-impl StreamTelemetry for MissionServer {
+impl StreamTelemetry for DownlinkServer {
     type StreamTelemetryStream = Pin<Box<dyn Stream<Item = Result<Message, Status>> + Send>>;
 
     async fn stream_telemetry(

@@ -14,6 +14,7 @@ logs/
 tmp_tkn
 
 mission-computer/tests/unoptimised_grid.jsonl
+flight-recorder/requirements.md
 
 # Devenv
 .devenv*
